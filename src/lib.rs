@@ -4,6 +4,7 @@ use store::db::InMemoryDB;
 use store::types::{Branch, Leaf, Node};
 
 pub fn insert_leaf(db: &mut InMemoryDB, key: Vec<u8>, data: String) {
+    assert_eq!(key.len(), 256);
     let mut current_idx: Vec<u8> = Vec::new();
     // store the new root branch that is the left, or the right child of the root
     let mut new_root_branch: Option<Node> = None;
@@ -87,7 +88,6 @@ pub fn insert_leaf(db: &mut InMemoryDB, key: Vec<u8>, data: String) {
         );
 
         if hasher_idx.len() == 2 {
-            // todo: hash and insert the parent
             match &mut parent {
                 Node::Branch(branch) => {
                     branch.hash();
@@ -105,7 +105,6 @@ pub fn insert_leaf(db: &mut InMemoryDB, key: Vec<u8>, data: String) {
     } else {
         db.root.right_child = new_root_branch;
     }
-    // re-hash the root
     db.root.hash();
 }
 
