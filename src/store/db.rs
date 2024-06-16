@@ -1,4 +1,4 @@
-use crate::trie::{Node, Root};
+use crate::store::types::{Node, Root};
 use std::collections::HashMap;
 pub struct InMemoryDB {
     pub root: Root,

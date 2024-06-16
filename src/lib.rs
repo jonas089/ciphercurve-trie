@@ -1,7 +1,7 @@
-pub mod db;
-pub mod trie;
-use db::InMemoryDB;
-use trie::{Branch, Leaf, Node};
+pub mod store;
+pub mod merkle;
+use store::db::InMemoryDB;
+use store::types::{Branch, Leaf, Node};
 
 pub fn insert_leaf(db: &mut InMemoryDB, key: Vec<u8>, data: String) {
     let mut current_idx: Vec<u8> = Vec::new();
@@ -128,7 +128,7 @@ pub fn update_parent(parent: &mut Node, node: Node, digit: u8) {
 
 #[test]
 fn test_insert_leaf() {
-    use crate::trie::Root;
+    use crate::store::types::Root;
     use std::collections::HashMap;
     let mut db: InMemoryDB = InMemoryDB {
         root: Root {
