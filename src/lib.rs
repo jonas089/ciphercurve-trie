@@ -1,5 +1,5 @@
-pub mod store;
 pub mod merkle;
+pub mod store;
 use store::db::InMemoryDB;
 use store::types::{Branch, Leaf, Node};
 
@@ -127,6 +127,7 @@ pub fn update_parent(parent: &mut Node, node: Node, digit: u8) {
 
 #[test]
 fn test_insert_leaf() {
+    use crate::merkle::merkle_proof;
     use crate::store::types::Root;
     use std::collections::HashMap;
     let mut db: InMemoryDB = InMemoryDB {
@@ -138,7 +139,13 @@ fn test_insert_leaf() {
         nodes: HashMap::new(),
     };
     let key: Vec<u8> = vec![0u8; 256];
+    let mut key_2: Vec<u8> = vec![0u8; 255];
+    key_2.push(1);
     let data: String = "Casper R&D @ Jonas Pauli".to_string();
-    insert_leaf(&mut db, key, data);
+    let data_2: String = "Merkle Tries are Incredible!".to_string();
+    insert_leaf(&mut db, key.clone(), data.clone());
+    insert_leaf(&mut db, key_2, data_2);
     println!("Root: {:?}", &db.root.hash);
+    let merkle_path = merkle_proof(&mut db, key);
+    println!("Merkle Path: {:?}", &merkle_path);
 }
