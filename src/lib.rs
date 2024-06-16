@@ -148,10 +148,12 @@ fn test_insert_leaf() {
     let merkle_path = merkle_proof(&mut db, key.clone());
     let merkle_path_base = merkle_path.0;
     let init_hash: Vec<u8> = db.get(&key).unwrap().unwrap_as_leaf().hash.unwrap();
+    
     let mut current_hash: Vec<u8> = init_hash;
     for sibling in merkle_path_base{
         let current_sibling = sibling.0;
         let sibling_hash: Option<Vec<u8>> = match current_sibling{
+            // todo handle edge case where this is a leaf
             Some(sibling) => {Some(sibling.unwrap_as_branch().hash.unwrap().to_vec())},
             None => None
         };
@@ -170,14 +172,29 @@ fn test_insert_leaf() {
         }
     }
     let merkle_path_root = merkle_path.1.unwrap();
-    //let mut root_sibling_hash = merkle_path_root.0.unwrap().unwrap_as_branch().hash.unwrap();
-    let mut root_sibling_hash = vec![1];
+    let mut root_sibling_hash: Vec<u8> = Vec::new();
     let mut root_hash: Vec<u8> = Vec::new();
     if merkle_path_root.1 == false{
+        match merkle_path_root.0{
+            Some(node) => {
+                root_sibling_hash = node.unwrap_as_branch().hash.unwrap();
+            },
+            None => {
+                root_sibling_hash = vec![0];
+            }
+        }
         root_sibling_hash.append(&mut current_hash);
         root_hash = default_hash(root_sibling_hash);
     }
     else{
+        match merkle_path_root.0{
+            Some(node) => {
+                root_sibling_hash = node.unwrap_as_branch().hash.unwrap();
+            },
+            None => {
+                root_sibling_hash = vec![1];
+            }
+        }
         current_hash.append(&mut root_sibling_hash);
         root_hash = default_hash(current_hash);
     }

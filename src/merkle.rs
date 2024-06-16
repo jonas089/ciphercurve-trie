@@ -43,5 +43,6 @@ pub fn merkle_proof(
     } else {
         root_sibling = Some((db.root.left_child.clone(), false));
     }
+    println!("Root sibling: {:?}", &root_sibling);
     (siblings, root_sibling)
 }
