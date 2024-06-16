@@ -63,7 +63,7 @@ impl Node {
 pub struct Leaf {
     pub hash: Option<Vec<u8>>,
     pub key: Vec<u8>,
-    pub data: String,
+    pub data: Vec<u8>,
 }
 impl Leaf {
     // temporary hash function, later implement proper Hasher

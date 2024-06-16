@@ -3,8 +3,10 @@ pub mod store;
 use store::db::InMemoryDB;
 #[allow(unused_imports)]
 use store::types::{default_hash, Branch, Leaf, Node};
+use serde::{Serialize, Deserialize};
+use bincode;
 
-pub fn insert_leaf(db: &mut InMemoryDB, key: Vec<u8>, data: String) {
+pub fn insert_leaf<T>(db: &mut InMemoryDB, key: Vec<u8>, data: T) where T: Serialize + Deserialize <'static> {
     assert_eq!(key.len(), 256);
     let mut current_idx: Vec<u8> = Vec::new();
     // store the new root branch that is the left, or the right child of the root
@@ -17,7 +19,7 @@ pub fn insert_leaf(db: &mut InMemoryDB, key: Vec<u8>, data: String) {
             let mut new_leaf: Leaf = Leaf {
                 hash: None,
                 key: current_idx.clone(),
-                data: data,
+                data: bincode::serialize(&data).expect("Failed to serialize leaf with Bincode"),
             };
             new_leaf.hash();
 
@@ -148,9 +150,14 @@ fn test_insert_leaf() {
 
     let key_3: Vec<u8> = vec![1u8; 256];
 
-    let data: String = "Casper R&D @ Jonas Pauli".to_string();
-    let data_2: String = "Tries are Fun!".to_string();
-    let data_3: String = "K.I.Z für Immer!".to_string();
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct AnyDataFits{
+        info: String
+    }
+
+    let data: AnyDataFits = AnyDataFits { info: "Jonas @ Casper R&D".to_string() };
+    let data_2: AnyDataFits = AnyDataFits { info: "Tries are incredible!".to_string() };
+    let data_3: AnyDataFits = AnyDataFits {info: "K.I.Z für Immer!".to_string()};
 
     insert_leaf(&mut db, key.clone(), data.clone());
     insert_leaf(&mut db, key_2.clone(), data_2.clone());
