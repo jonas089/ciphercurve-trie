@@ -142,16 +142,19 @@ fn test_insert_leaf() {
         nodes: HashMap::new(),
     };
     let key: Vec<u8> = vec![0u8; 256];
+
     let mut key_2: Vec<u8> = vec![0u8; 255];
     key_2.push(1);
+
     let data: String = "Casper R&D @ Jonas Pauli".to_string();
     let data_2: String = "Tries are Fun!".to_string();
+    
     insert_leaf(&mut db, key.clone(), data.clone());
     insert_leaf(&mut db, key_2.clone(), data_2.clone());
-    let merkle_path = merkle_proof(&mut db, key.clone());
-    let merkle_path_base = merkle_path.0;
-    let init_hash: Vec<u8> = db.get(&key).unwrap().unwrap_as_leaf().hash.unwrap();
-    
+
+    let merkle_path = merkle_proof(&mut db, key_2.clone());
+    let merkle_path_base = merkle_path.0.clone();
+    let init_hash: Vec<u8> = db.get(&key_2).unwrap().unwrap_as_leaf().hash.unwrap();
     let mut current_hash: Vec<u8> = init_hash;
     for sibling in merkle_path_base{
         let current_sibling = sibling.0;
@@ -168,20 +171,32 @@ fn test_insert_leaf() {
             },
             None => None
         };
-        if let Some(mut hash) = sibling_hash{
-            current_hash.append(&mut hash);
-            current_hash = default_hash(current_hash);
+        if sibling.1 == false{
+            if let Some(mut hash) = sibling_hash{
+                hash.append(&mut current_hash);
+                current_hash = default_hash(hash);
+            }
+            else{
+                let mut preimage = vec![0];
+                preimage.append(&mut current_hash);
+                current_hash = default_hash(preimage);
+            }
         }
         else{
-            if sibling.1 == false{
-                current_hash.push(0);
+            if let Some(mut hash) = sibling_hash{
+                current_hash.append(&mut hash);
+                current_hash = default_hash(current_hash);
             }
             else{
                 current_hash.push(1);
+                current_hash = default_hash(current_hash);
             }
-            current_hash = default_hash(current_hash);
         }
     }
+
+    println!("Current Hash: {:?}", &current_hash);
+    println!("Left Child: {:?}", &db.root.left_child.unwrap().unwrap_as_branch().hash);
+
     let merkle_path_root = merkle_path.1.unwrap();
     #[allow(unused_assignments)]
     let mut root_sibling_hash: Vec<u8> = Vec::new();
@@ -211,6 +226,5 @@ fn test_insert_leaf() {
         current_hash.append(&mut root_sibling_hash);
         root_hash = default_hash(current_hash);
     }
-    println!("Merkle Proof Root: {:?}", &root_hash);
-    println!("Actual Root: {:?}", &db.root.hash);
+    assert_eq!(&root_hash, &db.root.hash.unwrap());
 }
