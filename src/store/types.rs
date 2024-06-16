@@ -44,6 +44,21 @@ pub enum Node {
     Leaf(Leaf),
 }
 
+impl Node{
+    pub fn unwrap_as_leaf(&self) -> Leaf{
+        match self{
+            Node::Branch(_) => panic!("Failed to unwrap as Leaf"),
+            Node::Leaf(leaf) => leaf.clone()
+        }
+    }
+    pub fn unwrap_as_branch(&self) -> Branch{
+        match self{
+            Node::Branch(branch) => branch.clone(),
+            Node::Leaf(_) => panic!("Failed to unwrap as Branch")
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Leaf {
     pub hash: Option<Vec<u8>>,

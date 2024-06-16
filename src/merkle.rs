@@ -1,6 +1,7 @@
 // Compute Merkle Proof for a Leaf at a given point in time (e.g. at a Snapshot)
 use crate::store::db::InMemoryDB;
 use crate::store::types::Node;
+
 // obtain the merkle path for a leaf
 pub fn merkle_proof(
     db: &mut InMemoryDB,
@@ -13,6 +14,7 @@ pub fn merkle_proof(
     let mut current_idx: Vec<u8> = key.clone();
     let mut parent_idx: Vec<u8> = key.clone();
     parent_idx.pop();
+
     while parent_idx.len() > 0 {
         let parent = db
             .get(&parent_idx)
@@ -34,6 +36,7 @@ pub fn merkle_proof(
         }
         parent_idx.pop();
     }
+    #[allow(unused_assignments)]
     let mut root_sibling: Option<(Option<Node>, bool)> = None;
     if key.get(0).unwrap() == &0 {
         root_sibling = Some((db.root.right_child.clone(), true));

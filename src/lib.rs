@@ -1,7 +1,7 @@
 pub mod merkle;
 pub mod store;
 use store::db::InMemoryDB;
-use store::types::{Branch, Leaf, Node};
+use store::types::{default_hash, Branch, Leaf, Node};
 
 pub fn insert_leaf(db: &mut InMemoryDB, key: Vec<u8>, data: String) {
     assert_eq!(key.len(), 256);
@@ -57,7 +57,9 @@ pub fn insert_leaf(db: &mut InMemoryDB, key: Vec<u8>, data: String) {
 
     let mut hasher_idx: Vec<u8> = current_idx.clone();
     hasher_idx.pop();
-
+    // if hasher_idx is 1, then it has no parent
+    // in better words, the parent is the root sibling
+    // which is stored only in the root
     while hasher_idx.len() > 1 {
         let mut current_branch: Node = db
             .get(&hasher_idx)
@@ -142,10 +144,43 @@ fn test_insert_leaf() {
     let mut key_2: Vec<u8> = vec![0u8; 255];
     key_2.push(1);
     let data: String = "Casper R&D @ Jonas Pauli".to_string();
-    let data_2: String = "Merkle Tries are Incredible!".to_string();
     insert_leaf(&mut db, key.clone(), data.clone());
-    insert_leaf(&mut db, key_2, data_2);
-    println!("Root: {:?}", &db.root.hash);
-    let merkle_path = merkle_proof(&mut db, key);
-    println!("Merkle Path: {:?}", &merkle_path);
+    let merkle_path = merkle_proof(&mut db, key.clone());
+    let merkle_path_base = merkle_path.0;
+    let init_hash: Vec<u8> = db.get(&key).unwrap().unwrap_as_leaf().hash.unwrap();
+    let mut current_hash: Vec<u8> = init_hash;
+    for sibling in merkle_path_base{
+        let current_sibling = sibling.0;
+        let sibling_hash: Option<Vec<u8>> = match current_sibling{
+            Some(sibling) => {Some(sibling.unwrap_as_branch().hash.unwrap().to_vec())},
+            None => None
+        };
+        if let Some(mut hash) = sibling_hash{
+            current_hash.append(&mut hash);
+            current_hash = default_hash(current_hash);
+        }
+        else{
+            if sibling.1 == false{
+                current_hash.push(0);
+            }
+            else{
+                current_hash.push(1);
+            }
+            current_hash = default_hash(current_hash);
+        }
+    }
+    let merkle_path_root = merkle_path.1.unwrap();
+    //let mut root_sibling_hash = merkle_path_root.0.unwrap().unwrap_as_branch().hash.unwrap();
+    let mut root_sibling_hash = vec![1];
+    let mut root_hash: Vec<u8> = Vec::new();
+    if merkle_path_root.1 == false{
+        root_sibling_hash.append(&mut current_hash);
+        root_hash = default_hash(root_sibling_hash);
+    }
+    else{
+        current_hash.append(&mut root_sibling_hash);
+        root_hash = default_hash(current_hash);
+    }
+    println!("Merkle Proof Root: {:?}", &root_hash);
+    println!("Actual Root: {:?}", &db.root.hash);
 }
