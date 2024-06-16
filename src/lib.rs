@@ -1,6 +1,7 @@
 pub mod merkle;
 pub mod store;
 use store::db::InMemoryDB;
+#[allow(unused_imports)]
 use store::types::{default_hash, Branch, Leaf, Node};
 
 pub fn insert_leaf(db: &mut InMemoryDB, key: Vec<u8>, data: String) {
@@ -144,7 +145,9 @@ fn test_insert_leaf() {
     let mut key_2: Vec<u8> = vec![0u8; 255];
     key_2.push(1);
     let data: String = "Casper R&D @ Jonas Pauli".to_string();
+    let data_2: String = "Tries are Fun!".to_string();
     insert_leaf(&mut db, key.clone(), data.clone());
+    insert_leaf(&mut db, key_2.clone(), data_2.clone());
     let merkle_path = merkle_proof(&mut db, key.clone());
     let merkle_path_base = merkle_path.0;
     let init_hash: Vec<u8> = db.get(&key).unwrap().unwrap_as_leaf().hash.unwrap();
@@ -153,8 +156,16 @@ fn test_insert_leaf() {
     for sibling in merkle_path_base{
         let current_sibling = sibling.0;
         let sibling_hash: Option<Vec<u8>> = match current_sibling{
-            // todo handle edge case where this is a leaf
-            Some(sibling) => {Some(sibling.unwrap_as_branch().hash.unwrap().to_vec())},
+            Some(sibling) => {
+                match *sibling{
+                    Node::Branch(branch) => {
+                        Some(branch.hash.unwrap().to_vec())
+                    },
+                    Node::Leaf(leaf) => {
+                        Some(leaf.hash.unwrap().to_vec())
+                    }
+                }
+            },
             None => None
         };
         if let Some(mut hash) = sibling_hash{
@@ -172,7 +183,9 @@ fn test_insert_leaf() {
         }
     }
     let merkle_path_root = merkle_path.1.unwrap();
+    #[allow(unused_assignments)]
     let mut root_sibling_hash: Vec<u8> = Vec::new();
+    #[allow(unused_assignments)]
     let mut root_hash: Vec<u8> = Vec::new();
     if merkle_path_root.1 == false{
         match merkle_path_root.0{
