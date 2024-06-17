@@ -8,3 +8,7 @@ This Trie can be used to represent state in Blockchain systems.
 - Collision handler
 - Write comprehensive tests
 - Benchmark time and space complexity
+
+## Todos: Optimization
+- Decrease depth by merging Nodes
+- Store leafs in the DB with Key and store a Reference to these leafs in the populated Branches
