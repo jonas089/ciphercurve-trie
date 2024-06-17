@@ -12,3 +12,4 @@ This Trie can be used to represent state in Blockchain systems.
 ## Todos: Optimization
 - Decrease depth by merging Nodes
 - Store leafs in the DB with Key and store a Reference to these leafs in the populated Branches
+- Store modified leafs and branches in memory and re-hash them once insert concluded
