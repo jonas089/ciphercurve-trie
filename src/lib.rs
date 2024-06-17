@@ -1,7 +1,6 @@
 pub mod merkle;
 pub mod store;
 use bincode;
-use merkle::compute_root;
 use serde::{Deserialize, Serialize};
 use store::db::InMemoryDB;
 #[allow(unused_imports)]
@@ -136,6 +135,7 @@ pub fn update_parent(parent: &mut Node, node: Node, digit: u8) {
 
 #[test]
 fn test_insert_leaf() {
+    use crate::merkle::compute_root;
     use crate::merkle::merkle_proof;
     use crate::store::types::Root;
     use std::collections::HashMap;
