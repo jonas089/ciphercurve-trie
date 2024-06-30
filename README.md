@@ -1,6 +1,8 @@
 ⚠️ This is not a production library ⚠️
 
 ⚠️ Optimization work in progress ⚠️
+
+*This codebase will be refactored when I have the time, see Todos: Optimization*
 # Merkle Trie for Blockchain Systems
 This Trie can be used to represent state in Blockchain systems.
 
