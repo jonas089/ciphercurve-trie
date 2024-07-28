@@ -1,7 +1,8 @@
-use crate::store::types::{Node, Root};
+use crate::store::types::Node;
 use std::collections::HashMap;
+
+#[derive(Debug)]
 pub struct InMemoryDB {
-    pub root: Root,
     pub nodes: HashMap<Vec<u8>, Node>,
 }
 impl InMemoryDB {

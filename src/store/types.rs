@@ -1,120 +1,177 @@
+use super::db::InMemoryDB;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-#[derive(Clone, Debug)]
-pub struct Root {
-    pub hash: Option<Vec<u8>>,
-    pub left_child: Option<Node>,
-    pub right_child: Option<Node>,
-}
-impl Root {
-    pub fn hash(&mut self) {
-        let mut preimage: Vec<u8> = Vec::new();
-        match &self.left_child {
-            Some(child) => match child.clone() {
-                Node::Branch(branch) => {
-                    preimage.append(&mut branch.hash.unwrap());
-                }
-                Node::Leaf(leaf) => {
-                    preimage.append(&mut leaf.hash.expect("Encountered Leaf with no hash!"));
-                }
-            },
-            None => {
-                preimage.push(0u8);
-            }
-        };
-        match &self.right_child {
-            Some(child) => match child.clone() {
-                Node::Branch(branch) => {
-                    preimage.append(&mut branch.hash.unwrap());
-                }
-                Node::Leaf(leaf) => {
-                    preimage.append(&mut leaf.hash.expect("Encountered Leaf with no hash!"));
-                }
-            },
-            None => {
-                preimage.push(1u8);
-            }
-        };
-        self.hash = Some(default_hash(&preimage));
-    }
-}
+
+pub type RootHash = Vec<u8>;
+pub type NodeHash = Vec<u8>;
+pub type Key = Vec<u8>;
+pub type Data = Vec<u8>;
 
 #[derive(Clone, Debug)]
 pub enum Node {
+    Root(Root),
     Branch(Branch),
     Leaf(Leaf),
 }
 
 impl Node {
-    pub fn unwrap_as_leaf(&self) -> Leaf {
+    pub fn unwrap_as_root(self) -> Root {
         match self {
-            Node::Branch(_) => panic!("Failed to unwrap as Leaf"),
-            Node::Leaf(leaf) => leaf.clone(),
+            Node::Root(root) => root,
+            _ => panic!("Failed to unwrap as Root"),
         }
     }
-    pub fn unwrap_as_branch(&self) -> Branch {
+    pub fn unwrap_as_branch(self) -> Branch {
         match self {
-            Node::Branch(branch) => branch.clone(),
-            Node::Leaf(_) => panic!("Failed to unwrap as Branch"),
+            Node::Branch(branch) => branch,
+            _ => panic!("Failed to unwrap as Branch"),
+        }
+    }
+    pub fn unwrap_as_leaf(self) -> Leaf {
+        match self {
+            Node::Leaf(leaf) => leaf,
+            _ => panic!("Failed to unwrap as Leaf"),
         }
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Leaf {
-    pub hash: Option<Vec<u8>>,
-    pub key: Vec<u8>,
-    pub data: Vec<u8>,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Root {
+    pub hash: Option<RootHash>,
+    pub left: Option<NodeHash>,
+    pub right: Option<NodeHash>,
 }
-impl Leaf {
-    // temporary hash function, later implement proper Hasher
-    pub fn hash(&mut self) {
-        self.hash = Some(default_hash(&self.data))
+
+impl Root {
+    pub fn empty() -> Self {
+        Self {
+            hash: None,
+            left: None,
+            right: None,
+        }
+    }
+    pub fn store(&self, db: &mut InMemoryDB) {
+        db.insert(
+            &self
+                .hash
+                .clone()
+                .expect("Must compute hash before storing a node, try calling .hash()"),
+            Node::Root(self.clone()),
+        )
+    }
+    pub fn hash_and_store(&mut self, db: &mut InMemoryDB) {
+        self.hash();
+        self.store(db);
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Branch {
-    pub hash: Option<Vec<u8>>,
-    pub key: Vec<u8>,
-    pub left_child: Option<Box<Node>>,
-    pub right_child: Option<Box<Node>>,
+    pub key: Key,
+    pub hash: Option<NodeHash>,
+    pub left: Option<NodeHash>,
+    pub right: Option<NodeHash>,
 }
 
 impl Branch {
-    // temporary hash function, later implement proper Hasher
-    pub fn hash(&mut self) {
-        let mut preimage: Vec<u8> = Vec::new();
-        match &self.left_child {
-            Some(child) => match *child.clone() {
-                Node::Branch(branch) => {
-                    preimage.append(&mut branch.hash.unwrap());
-                }
-                Node::Leaf(leaf) => {
-                    preimage.append(&mut leaf.hash.expect("Encountered Leaf with no hash!"));
-                }
-            },
-            None => {
-                preimage.push(0u8);
-            }
-        };
-        match &self.right_child {
-            Some(child) => match *child.clone() {
-                Node::Branch(branch) => {
-                    preimage.append(&mut branch.hash.unwrap());
-                }
-                Node::Leaf(leaf) => {
-                    preimage.append(&mut leaf.hash.expect("Encountered Leaf with no hash!"));
-                }
-            },
-            None => {
-                preimage.push(1u8);
-            }
-        };
-        self.hash = Some(default_hash(&preimage));
+    pub fn empty(key: Key) -> Self {
+        Self {
+            key,
+            hash: None,
+            left: None,
+            right: None,
+        }
+    }
+    pub fn new(key: Key, left: Option<NodeHash>, right: Option<NodeHash>) -> Self {
+        Self {
+            key,
+            hash: None,
+            left,
+            right,
+        }
+    }
+    pub fn store(&self, db: &mut InMemoryDB) {
+        db.insert(
+            &self
+                .hash
+                .clone()
+                .expect("Must compute hash before storing a node, try calling .hash()"),
+            Node::Branch(self.clone()),
+        )
+    }
+    pub fn hash_and_store(&mut self, db: &mut InMemoryDB) {
+        self.hash();
+        self.store(db);
+    }
+    pub fn update(&mut self, left: Option<NodeHash>, right: Option<NodeHash>) {
+        self.left = left;
+        self.right = right;
     }
 }
 
-pub fn default_hash<T: AsRef<[u8]>>(data: T) -> Vec<u8> {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Leaf {
+    pub prefix: Option<Key>,
+    pub key: Key,
+    pub hash: Option<NodeHash>,
+    pub data: Option<Data>,
+}
+
+impl Leaf {
+    pub fn empty(key: Key) -> Self {
+        Self {
+            prefix: None,
+            key,
+            hash: None,
+            data: None,
+        }
+    }
+    pub fn new(key: Key, data: Option<Data>) -> Self {
+        Self {
+            prefix: None,
+            key,
+            hash: None,
+            data,
+        }
+    }
+    pub fn hash_and_store(&mut self, db: &mut InMemoryDB) {
+        self.hash();
+        self.store(db);
+    }
+    pub fn store(&self, db: &mut InMemoryDB) {
+        db.insert(
+            &self
+                .hash
+                .clone()
+                .expect("Must compute hash before storing a node, try calling .hash()"),
+            Node::Leaf(self.clone()),
+        )
+    }
+}
+
+pub trait Hashable {
+    fn hash(&mut self);
+}
+
+impl Hashable for Root {
+    fn hash(&mut self) {
+        self.hash = Some(default_hash(bincode::serialize(&self).unwrap()));
+    }
+}
+
+impl Hashable for Branch {
+    fn hash(&mut self) {
+        self.hash = Some(default_hash(bincode::serialize(&self).unwrap()));
+    }
+}
+
+impl Hashable for Leaf {
+    fn hash(&mut self) {
+        self.hash = Some(default_hash(bincode::serialize(&self).unwrap()));
+    }
+}
+
+pub fn default_hash<T: AsRef<[u8]>>(data: T) -> NodeHash {
     let mut hasher = Sha256::new();
     hasher.update(data);
     hasher.finalize().to_vec()
