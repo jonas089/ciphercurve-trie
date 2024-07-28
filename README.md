@@ -4,7 +4,9 @@
 
 Refactor is in progress, see [here](https://github.com/jonas089/jonas089-trie/tree/refactor). I am making good progress and the new Trie actually maintains state (the one in the master branch won't work for actual blockchain use).
 
-*This codebase will be refactored when I have the time, see Todos: Optimization*
+Once the refactoring on the `refactor` branch is complete, `master` will be overriden entirely. Using the Trie on the `master` branch for a blockchain system is not recommended.
+
+*This codebase will be refactored, see Todos: Optimization*
 # Merkle Trie for Blockchain Systems
 This Trie can be used to represent state in Blockchain systems.
 
