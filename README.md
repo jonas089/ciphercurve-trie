@@ -1,6 +1,4 @@
-⚠️ This is not a production library ⚠️
-
-⚠️ Optimization work in progress ⚠️
+⚠️ Refactor in progress ⚠️
 
 Refactor is in progress, see [here](https://github.com/jonas089/jonas089-trie/tree/refactor). I am making good progress and the new Trie actually maintains state (the one in the master branch won't work for actual blockchain use).
 
