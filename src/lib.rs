@@ -246,20 +246,35 @@ mod tests {
             ])
             .unwrap();
         println!("Left Root child: {:?}", &left_child);
-        let left_branch_child = db
-            .get(&vec![
-                38, 183, 242, 228, 2, 90, 200, 254, 78, 233, 65, 149, 235, 64, 61, 119, 214, 214,
-                207, 38, 82, 48, 80, 110, 1, 33, 210, 216, 100, 106, 46, 205,
-            ])
-            .unwrap();
-        println!("Left Branch child: {:?}", &left_branch_child);
 
-        let right_branch_child = db
-            .get(&vec![
-                118, 94, 39, 90, 220, 215, 115, 129, 252, 90, 219, 163, 25, 85, 34, 142, 94, 148,
-                209, 154, 70, 54, 63, 188, 209, 223, 190, 10, 248, 162, 179, 35,
-            ])
-            .unwrap();
-        println!("Right Branch child: {:?}", &right_branch_child);
+        {
+            let left_branch_child = db
+                .get(&vec![
+                    38, 183, 242, 228, 2, 90, 200, 254, 78, 233, 65, 149, 235, 64, 61, 119, 214,
+                    214, 207, 38, 82, 48, 80, 110, 1, 33, 210, 216, 100, 106, 46, 205,
+                ])
+                .unwrap();
+            println!("Left Branch child: {:?}", &left_branch_child);
+
+            match left_branch_child {
+                Node::Leaf(leaf) => assert_eq!(leaf.prefix, Some(vec![0, 0, 0])),
+                _ => panic!("Invalid Node"),
+            }
+        }
+
+        {
+            let right_branch_child = db
+                .get(&vec![
+                    118, 94, 39, 90, 220, 215, 115, 129, 252, 90, 219, 163, 25, 85, 34, 142, 94,
+                    148, 209, 154, 70, 54, 63, 188, 209, 223, 190, 10, 248, 162, 179, 35,
+                ])
+                .unwrap();
+            println!("Right Branch child: {:?}", &right_branch_child);
+
+            match right_branch_child {
+                Node::Leaf(leaf) => assert_eq!(leaf.prefix, Some(vec![1, 1, 1])),
+                _ => panic!("Invalid Node"),
+            }
+        }
     }
 }
