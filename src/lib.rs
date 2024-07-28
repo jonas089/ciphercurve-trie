@@ -25,6 +25,8 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
                 if digit == 0 {
                     match root.left.clone() {
                         Some(node_hash) => {
+                            let root_unwrapped: Root = root_node.clone().unwrap_as_root();
+                            modified_nodes.push((0, Node::Root(root_unwrapped)));
                             current_node = db.get(&node_hash).unwrap().clone();
                         }
                         None => {
@@ -40,6 +42,8 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
                 } else {
                     match root.right.clone() {
                         Some(node_hash) => {
+                            let root_unwrapped: Root = root_node.clone().unwrap_as_root();
+                            modified_nodes.push((0, Node::Root(root_unwrapped)));
                             current_node = db.get(&node_hash).unwrap().clone();
                         }
                         None => {
@@ -118,7 +122,11 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
         }
     }
     // todo: use the list of modified nodes to re-hash the root.
-    println!("Modified nodes: {:?}", &modified_nodes);
+    println!(
+        "Modified nodes: {:?}, len: {:?}",
+        &modified_nodes,
+        &modified_nodes.len()
+    );
     modified_nodes.reverse();
     for chunk in &mut modified_nodes.chunks(2) {
         if let [child, parent] = chunk {
@@ -151,6 +159,7 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
                         }
                         branch.store(db);
                         root.hash_and_store(db);
+                        new_root = root.clone();
                     }
                     _ => panic!("Child can't be a Root"),
                 },
@@ -206,17 +215,29 @@ mod tests {
         let mut db = InMemoryDB {
             nodes: HashMap::new(),
         };
+
         let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
-        let mut leaf_2_key: Vec<u8> = vec![0u8; 255];
-        leaf_2_key.push(1);
+
+        let mut leaf_2_key: Vec<u8> = vec![0, 0];
+
+        for i in 0..254 {
+            leaf_2_key.push(1);
+        }
         let mut leaf_2: Leaf = Leaf::empty(leaf_2_key);
+
+        let mut leaf_3_key: Vec<u8> = vec![0u8];
+        for i in 0..255 {
+            leaf_3_key.push(1);
+        }
+        let mut leaf_3 = Leaf::empty(leaf_3_key);
         leaf_1.hash();
         leaf_2.hash();
+        leaf_3.hash();
         let root: Root = Root::empty();
         let root_node = Node::Root(root);
         let new_root = insert_leaf(&mut db, &mut leaf_1, root_node);
-        println!("New Root: {:?}", &new_root.hash);
         let new_root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
+        let new_root = insert_leaf(&mut db, &mut leaf_3, Node::Root(new_root));
         println!("New Root: {:?}", &new_root.hash);
     }
 }
