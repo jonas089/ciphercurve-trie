@@ -1,5 +1,8 @@
 // Compute Merkle Proof for a Leaf at a given point in time (e.g. at a Snapshot)
-use crate::store::{db::InMemoryDB, types::Node};
+use crate::store::{
+    db::InMemoryDB,
+    types::{Hashable, Node, NodeHash, RootHash},
+};
 // obtain the merkle path for a leaf
 pub fn merkle_proof(db: &mut InMemoryDB, key: Vec<u8>, trie_root: Node) -> Option<MerkleProof> {
     assert_eq!(key.len(), 256);
@@ -37,6 +40,47 @@ pub fn merkle_proof(db: &mut InMemoryDB, key: Vec<u8>, trie_root: Node) -> Optio
     }
 }
 
+pub fn verify_merkle_proof(inner_proof: Vec<(bool, Node)>, state_root_hash: RootHash) {
+    let mut current_hash: Option<(bool, NodeHash)> = None;
+    let mut root_hash: Option<RootHash> = None;
+    for (idx, node) in inner_proof.into_iter().enumerate() {
+        if idx == 0 {
+            // must be a leaf
+            let mut leaf = node.1.unwrap_as_leaf();
+            leaf.hash = None;
+            leaf.hash();
+            current_hash = Some((node.0, leaf.hash.unwrap()));
+        } else {
+            match node.1 {
+                Node::Root(mut root) => {
+                    if current_hash.clone().unwrap().0 == false {
+                        root.left = Some(current_hash.clone().unwrap().1);
+                    } else {
+                        root.right = Some(current_hash.clone().unwrap().1);
+                    }
+                    root.hash = None;
+                    root.hash();
+                    root_hash = root.hash;
+                }
+                Node::Branch(mut branch) => {
+                    if current_hash.clone().unwrap().0 == false {
+                        branch.left = Some(current_hash.clone().unwrap().1);
+                    } else {
+                        branch.right = Some(current_hash.clone().unwrap().1);
+                    }
+                    branch.hash = None;
+                    branch.hash();
+                    current_hash = Some((node.0, branch.hash.unwrap()));
+                }
+                Node::Leaf(_) => panic!("Invalid Node variant in Merkle Proof"),
+            }
+        }
+    }
+    // if this assertion passes, the merkle proof is valid
+    // for the given root hash
+    assert_eq!(&state_root_hash, &root_hash.unwrap());
+}
+
 #[derive(Clone, Debug)]
 pub struct MerkleProof {
     pub nodes: Vec<(bool, Node)>,
@@ -48,9 +92,10 @@ mod tests {
 
     use crate::{
         insert_leaf,
+        merkle::verify_merkle_proof,
         store::{
             db::InMemoryDB,
-            types::{Hashable, Leaf, Node, NodeHash, Root, RootHash},
+            types::{Hashable, Leaf, Node, Root},
         },
     };
 
@@ -79,43 +124,6 @@ mod tests {
         let mut inner_proof = merkle_proof.unwrap().nodes;
         inner_proof.reverse();
         println!("Merkle Proof: {:?}", &inner_proof);
-        let mut current_hash: Option<(bool, NodeHash)> = None;
-        let mut state_root_hash: Option<RootHash> = None;
-        for (idx, node) in inner_proof.into_iter().enumerate() {
-            if idx == 0 {
-                // must be a leaf
-                let mut leaf = node.1.unwrap_as_leaf();
-                leaf.hash = None;
-                leaf.hash();
-                current_hash = Some((node.0, leaf.hash.unwrap()));
-            } else {
-                match node.1 {
-                    Node::Root(mut root) => {
-                        if current_hash.clone().unwrap().0 == false {
-                            root.left = Some(current_hash.clone().unwrap().1);
-                        } else {
-                            root.right = Some(current_hash.clone().unwrap().1);
-                        }
-                        root.hash = None;
-                        root.hash();
-                        state_root_hash = root.hash;
-                    }
-                    Node::Branch(mut branch) => {
-                        if current_hash.clone().unwrap().0 == false {
-                            branch.left = Some(current_hash.clone().unwrap().1);
-                        } else {
-                            branch.right = Some(current_hash.clone().unwrap().1);
-                        }
-                        branch.hash = None;
-                        branch.hash();
-                        current_hash = Some((node.0, branch.hash.unwrap()));
-                    }
-                    Node::Leaf(_) => panic!("Invalid Node variant in Merkle Proof"),
-                }
-            }
-        }
-        // if this assertion passes, the merkle proof is valid
-        // for the given root hash
-        assert_eq!(&new_root.hash, &state_root_hash);
+        verify_merkle_proof(inner_proof, new_root.hash.unwrap());
     }
 }
