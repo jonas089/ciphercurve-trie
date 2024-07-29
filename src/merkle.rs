@@ -94,8 +94,8 @@ mod tests {
         insert_leaf,
         merkle::verify_merkle_proof,
         store::{
-            db::InMemoryDB,
-            types::{Hashable, Key, Leaf, Node, Root},
+            db::{self, InMemoryDB},
+            types::{Hashable, Key, Leaf, Node, NodeHash, Root},
         },
     };
 
@@ -140,10 +140,11 @@ mod tests {
         let root_node: Node = Node::Root(root);
         let mut current_root = root_node.clone();
         let mut idx = 0;
+        let mut leaf_keys: Vec<NodeHash> = Vec::new();
         loop {
             let leaf_key: Key = generate_random_key();
             leaf_data.push(0);
-            let mut leaf: Leaf = Leaf::empty(leaf_key);
+            let mut leaf: Leaf = Leaf::empty(leaf_key.clone());
             leaf.data = Some(leaf_data.clone());
             leaf.hash();
             let new_root: Root = insert_leaf(&mut db, &mut leaf, current_root.clone());
@@ -151,12 +152,23 @@ mod tests {
             let mut inner_proof = proof.unwrap().nodes;
             inner_proof.reverse();
             verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+
+            // stress-test all previous keys
+            for key in leaf_keys.clone() {
+                let proof = merkle_proof(&mut db, key, Node::Root(new_root.clone()));
+                let mut inner_proof = proof.unwrap().nodes;
+                inner_proof.reverse();
+                verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+            }
+
+            leaf_keys.push(leaf_key);
             current_root = Node::Root(new_root.clone());
             idx += 1;
             if idx >= 100 {
                 break;
             }
         }
+        println!("Memory DB size: {:?}", &db.nodes.len());
     }
 
     use rand::Rng;
