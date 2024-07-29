@@ -60,6 +60,7 @@ impl Root {
         )
     }
     pub fn hash_and_store(&mut self, db: &mut InMemoryDB) {
+        self.hash = None;
         self.hash();
         self.store(db);
     }
@@ -100,6 +101,7 @@ impl Branch {
         )
     }
     pub fn hash_and_store(&mut self, db: &mut InMemoryDB) {
+        self.hash = None;
         self.hash();
         self.store(db);
     }
@@ -135,6 +137,7 @@ impl Leaf {
         }
     }
     pub fn hash_and_store(&mut self, db: &mut InMemoryDB) {
+        self.hash = None;
         self.hash();
         self.store(db);
     }
@@ -155,18 +158,21 @@ pub trait Hashable {
 
 impl Hashable for Root {
     fn hash(&mut self) {
+        self.hash = None;
         self.hash = Some(default_hash(bincode::serialize(&self).unwrap()));
     }
 }
 
 impl Hashable for Branch {
     fn hash(&mut self) {
+        self.hash = None;
         self.hash = Some(default_hash(bincode::serialize(&self).unwrap()));
     }
 }
 
 impl Hashable for Leaf {
     fn hash(&mut self) {
+        self.hash = None;
         self.hash = Some(default_hash(bincode::serialize(&self).unwrap()));
     }
 }

@@ -118,12 +118,16 @@ mod tests {
         let root_node: Node = Node::Root(root);
         let new_root: Root = insert_leaf(&mut db, &mut leaf_1, root_node);
         let new_root: Root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
-        let merkle_proof = merkle_proof(&mut db, leaf_2.key, Node::Root(new_root.clone()));
+        let proof = merkle_proof(&mut db, leaf_2.key, Node::Root(new_root.clone()));
 
         // verify merkle proof
-        let mut inner_proof = merkle_proof.unwrap().nodes;
+        let mut inner_proof = proof.unwrap().nodes;
         inner_proof.reverse();
-        println!("Merkle Proof: {:?}", &inner_proof);
-        verify_merkle_proof(inner_proof, new_root.hash.unwrap());
+        verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+
+        let proof = merkle_proof(&mut db, leaf_1.key, Node::Root(new_root.clone()));
+        let mut inner_proof = proof.unwrap().nodes;
+        inner_proof.reverse();
+        verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
     }
 }
