@@ -121,12 +121,6 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
             }
         }
     }
-    // todo: use the list of modified nodes to re-hash the root.
-    println!(
-        "Modified nodes: {:?}, len: {:?}",
-        &modified_nodes,
-        &modified_nodes.len()
-    );
     modified_nodes.reverse();
     for chunk in &mut modified_nodes.chunks(2) {
         if let [child, parent] = chunk {
@@ -148,7 +142,6 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
                         leaf.store(db);
                         root.hash_and_store(db);
                         new_root = root.clone();
-                        println!("New Root: {:?}", &root);
                     }
                     Node::Branch(mut branch) => {
                         branch.hash();
@@ -220,13 +213,13 @@ mod tests {
 
         let mut leaf_2_key: Vec<u8> = vec![0; 253];
 
-        for i in 0..3 {
+        for _i in 0..3 {
             leaf_2_key.push(1);
         }
         let mut leaf_2: Leaf = Leaf::empty(leaf_2_key);
 
         let mut leaf_3_key: Vec<u8> = vec![0; 253];
-        for i in 0..3 {
+        for _i in 0..3 {
             leaf_3_key.push(0);
         }
         let mut leaf_3 = Leaf::empty(leaf_3_key);
@@ -236,17 +229,7 @@ mod tests {
         let root: Root = Root::empty();
         let root_node = Node::Root(root);
         let new_root = insert_leaf(&mut db, &mut leaf_1, root_node);
-        let new_root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
-        //let new_root = insert_leaf(&mut db, &mut leaf_3, Node::Root(new_root));
-        println!("New Root: {:?}", &new_root);
-        let left_child = db
-            .get(&vec![
-                54, 36, 83, 225, 30, 24, 251, 253, 148, 12, 210, 155, 165, 238, 9, 137, 1, 141, 39,
-                180, 36, 162, 204, 100, 68, 150, 244, 37, 209, 250, 187, 68,
-            ])
-            .unwrap();
-        println!("Left Root child: {:?}", &left_child);
-
+        let _ = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
         {
             let left_branch_child = db
                 .get(&vec![
@@ -254,7 +237,6 @@ mod tests {
                     214, 207, 38, 82, 48, 80, 110, 1, 33, 210, 216, 100, 106, 46, 205,
                 ])
                 .unwrap();
-            println!("Left Branch child: {:?}", &left_branch_child);
 
             match left_branch_child {
                 Node::Leaf(leaf) => assert_eq!(leaf.prefix, Some(vec![0, 0, 0])),
@@ -269,7 +251,6 @@ mod tests {
                     148, 209, 154, 70, 54, 63, 188, 209, 223, 190, 10, 248, 162, 179, 35,
                 ])
                 .unwrap();
-            println!("Right Branch child: {:?}", &right_branch_child);
 
             match right_branch_child {
                 Node::Leaf(leaf) => assert_eq!(leaf.prefix, Some(vec![1, 1, 1])),
