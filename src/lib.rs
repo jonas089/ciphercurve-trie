@@ -178,7 +178,6 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
     }
     new_root.hash = None;
     new_root.hash_and_store(db);
-    println!("Root: {:?}", &new_root);
     new_root
 }
 

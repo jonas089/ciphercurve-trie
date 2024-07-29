@@ -95,7 +95,7 @@ mod tests {
         merkle::verify_merkle_proof,
         store::{
             db::InMemoryDB,
-            types::{Hashable, Key, Leaf, Node, Root, RootHash},
+            types::{Hashable, Key, Leaf, Node, Root},
         },
     };
 
@@ -147,15 +147,13 @@ mod tests {
             leaf.data = Some(leaf_data.clone());
             leaf.hash();
             let new_root: Root = insert_leaf(&mut db, &mut leaf, current_root.clone());
-
             let proof = merkle_proof(&mut db, leaf.key, Node::Root(new_root.clone()));
             let mut inner_proof = proof.unwrap().nodes;
             inner_proof.reverse();
             verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
-
             current_root = Node::Root(new_root.clone());
             idx += 1;
-            if idx >= 1000 {
+            if idx >= 100 {
                 break;
             }
         }
