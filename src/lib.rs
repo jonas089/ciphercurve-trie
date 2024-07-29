@@ -100,12 +100,9 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
                 leaf.prefix = Some(leaf.key[neq_idx..].to_vec());
                 new_leaf.prefix = Some(new_leaf.key[neq_idx..].to_vec());
                 // replace this leaf with a branch in memory
-                // re-hashing old leaf here because of prefix change
+                // re-hashing leafs here because of prefix change
                 leaf.hash_and_store(db);
-                // same for new leaf
                 new_leaf.hash_and_store(db);
-                // don't do this here, do it when re-hashing the Trie
-                //new_branch.hash_and_store(db);
                 let mut new_branch: Branch = Branch::empty(new_leaf.key[..neq_idx].to_vec());
                 if new_leaf_pos == 0 {
                     new_branch.left = new_leaf.hash.clone();
@@ -207,11 +204,8 @@ mod tests {
         let mut db = InMemoryDB {
             nodes: HashMap::new(),
         };
-
         let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
-
         let mut leaf_2_key: Vec<u8> = vec![0; 253];
-
         for _i in 0..3 {
             leaf_2_key.push(1);
         }
