@@ -33,7 +33,6 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
                             let mut root = current_node.clone().unwrap_as_root();
                             root.left = Some(new_leaf.hash.clone().unwrap());
                             new_leaf.store(db);
-                            root.hash_and_store(db);
                             new_root = root.clone();
                             modified_nodes.push((0, Node::Root(root)));
                             break;
@@ -50,7 +49,6 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
                             let mut root = current_node.clone().unwrap_as_root();
                             root.right = Some(new_leaf.hash.clone().unwrap());
                             new_leaf.store(db);
-                            root.hash_and_store(db);
                             new_root = root.clone();
                             modified_nodes.push((1, Node::Root(root)));
                             break;
@@ -140,7 +138,6 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
                             root.right = Some(leaf.hash.clone().unwrap());
                         }
                         leaf.store(db);
-                        root.hash_and_store(db);
                         new_root = root.clone();
                     }
                     Node::Branch(mut branch) => {
@@ -151,7 +148,6 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
                             root.right = Some(branch.hash.clone().unwrap());
                         }
                         branch.store(db);
-                        root.hash_and_store(db);
                         new_root = root.clone();
                     }
                     _ => panic!("Child can't be a Root"),
@@ -183,6 +179,9 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
             }
         }
     }
+    new_root.hash = None;
+    new_root.hash_and_store(db);
+    println!("Root: {:?}", &new_root);
     new_root
 }
 

@@ -6,8 +6,8 @@ pub fn merkle_proof(db: &mut InMemoryDB, key: Vec<u8>, trie_root: Node) -> Optio
     let mut idx: usize = 0;
     let mut proof: MerkleProof = MerkleProof { nodes: Vec::new() };
     let mut current_node = trie_root.clone();
+    let mut digit: u8 = key[idx];
     loop {
-        let digit: u8 = key[idx];
         match &mut current_node {
             Node::Root(root) => {
                 proof.nodes.push((false, Node::Root(root.clone())));
@@ -23,6 +23,7 @@ pub fn merkle_proof(db: &mut InMemoryDB, key: Vec<u8>, trie_root: Node) -> Optio
             }
             Node::Branch(branch) => {
                 idx += branch.key.len();
+                digit = key[idx];
                 if digit == 0 {
                     current_node = db.get(&branch.left.clone().unwrap()).unwrap().clone();
                     proof.nodes.push((false, current_node.clone()));
@@ -62,16 +63,22 @@ mod tests {
         };
         let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
         leaf_1.hash();
+
+        let mut leaf_2_key = vec![0, 0];
+        for _i in 0..254 {
+            leaf_2_key.push(1);
+        }
+        let mut leaf_2: Leaf = Leaf::empty(leaf_2_key);
         let root: Root = Root::empty();
         let root_node: Node = Node::Root(root);
         let new_root: Root = insert_leaf(&mut db, &mut leaf_1, root_node);
-        let merkle_proof = merkle_proof(&mut db, leaf_1.key, Node::Root(new_root.clone()));
+        let new_root: Root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
+        let merkle_proof = merkle_proof(&mut db, leaf_2.key, Node::Root(new_root.clone()));
 
         // verify merkle proof
         let mut inner_proof = merkle_proof.unwrap().nodes;
         inner_proof.reverse();
-        // leaf hash
-
+        println!("Merkle Proof: {:?}", &inner_proof);
         let mut current_hash: Option<(bool, NodeHash)> = None;
         let mut state_root_hash: Option<RootHash> = None;
         for (idx, node) in inner_proof.into_iter().enumerate() {
