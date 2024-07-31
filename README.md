@@ -2,6 +2,8 @@
 
 :warning: This Library has not been audited, use at own Risk! :warning:
 
+![benchmark](https://github.com/jonas089/jonas089-trie/blob/master/resources/simple-bench.png)
+
 ## Implementation Details
 
 Historical state is preserved for each `root hash`, one can query the `db` for a Root and generate `Merkle Proofs` for `Leaf`s in the `Trie`.
