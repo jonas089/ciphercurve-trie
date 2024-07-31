@@ -138,6 +138,8 @@ mod tests {
         let mut current_root = root_node.clone();
         let mut idx = 0;
         let mut leaf_keys: Vec<NodeHash> = Vec::new();
+        let transaction_count = 10000;
+        let progress_bar: ProgressBar = ProgressBar::new(transaction_count as u64);
         loop {
             let leaf_key: Key = generate_random_key();
             leaf_data.push(0);
@@ -161,13 +163,16 @@ mod tests {
             leaf_keys.push(leaf_key);
             current_root = Node::Root(new_root.clone());
             idx += 1;
-            if idx >= 100 {
+            if idx >= transaction_count {
+                progress_bar.finish_with_message("Done testing merkle proofs!");
                 break;
             }
+            progress_bar.inc(1);
         }
         println!("Memory DB size: {:?}", &db.nodes.len());
     }
 
+    use indicatif::ProgressBar;
     use rand::Rng;
     fn generate_random_key() -> Key {
         let mut rng = rand::thread_rng();
