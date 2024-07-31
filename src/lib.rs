@@ -323,7 +323,7 @@ mod tests {
     #[test]
     fn test_insert_leafs() {
         let transaction_count: u32 = std::env::var("INSERT_TRANSACTION_COUNT")
-            .unwrap_or_else(|_| "10000".to_string())
+            .unwrap_or_else(|_| "100000".to_string())
             .parse::<u32>()
             .expect("Invalid argument STRESS_TEST_TRANSACTION_COUNT");
         let mut transactions: Vec<Leaf> = Vec::new();

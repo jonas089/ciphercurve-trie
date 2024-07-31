@@ -85,7 +85,7 @@ pub struct MerkleProof {
 
 #[cfg(test)]
 pub mod tests {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, time::Instant};
 
     use crate::{
         insert_leaf,
@@ -133,25 +133,27 @@ pub mod tests {
         let mut db = InMemoryDB {
             nodes: HashMap::new(),
         };
-        let mut leaf_data: Vec<u8> = vec![0];
         let root: Root = Root::empty();
         let root_node: Node = Node::Root(root);
         let mut current_root = root_node.clone();
-        let mut idx = 0;
-        let mut leaf_keys: Vec<NodeHash> = Vec::new();
         let transaction_count: u32 = std::env::var("STRESS_TEST_TRANSACTION_COUNT")
-            .unwrap_or_else(|_| "1000".to_string())
+            .unwrap_or_else(|_| "10000".to_string())
             .parse::<u32>()
             .expect("Invalid argument STRESS_TEST_TRANSACTION_COUNT");
         let progress_bar: ProgressBar = ProgressBar::new(transaction_count as u64);
-        loop {
+        let mut leafs: Vec<Leaf> = Vec::new();
+        for _ in 0..transaction_count {
             let leaf_key: Key = generate_random_key();
-            leaf_data.push(0);
             let mut leaf: Leaf = Leaf::empty(leaf_key.clone());
-            leaf.data = Some(leaf_data.clone());
+            leaf.data = Some(generate_random_data());
+            leafs.push(leaf);
+        }
+        let mut leaf_keys: Vec<NodeHash> = Vec::new();
+        let start_time = Instant::now();
+        for mut leaf in leafs {
             leaf.hash();
-            let new_root: Root = insert_leaf(&mut db, &mut leaf, current_root.clone());
-            let proof = merkle_proof(&mut db, leaf.key, Node::Root(new_root.clone()));
+            let new_root: Root = insert_leaf(&mut db, &mut leaf.clone(), current_root.clone());
+            let proof = merkle_proof(&mut db, leaf.key.clone(), Node::Root(new_root.clone()));
             let mut inner_proof = proof.unwrap().nodes;
             inner_proof.reverse();
             verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
@@ -165,20 +167,21 @@ pub mod tests {
             }
             #[cfg(not(feature = "stress-test"))]
             {
-                let proof = merkle_proof(&mut db, leaf_key.clone(), Node::Root(new_root.clone()));
+                let proof = merkle_proof(&mut db, leaf.key.clone(), Node::Root(new_root.clone()));
                 let mut inner_proof = proof.unwrap().nodes;
                 inner_proof.reverse();
                 verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
             }
-            leaf_keys.push(leaf_key);
+            leaf_keys.push(leaf.key.clone());
             current_root = Node::Root(new_root.clone());
-            idx += 1;
-            if idx >= transaction_count {
-                progress_bar.finish_with_message("Done testing merkle proofs!");
-                break;
-            }
             progress_bar.inc(1);
         }
+        progress_bar.finish_with_message("Done checking merkle proofs!");
+        println!(
+            "[{}x Merkle Proof] Elapsed Time: {} s",
+            transaction_count.to_string().yellow(),
+            &start_time.elapsed().as_secs().to_string().blue()
+        );
         println!("Memory DB size: {}", &db.nodes.len().to_string().blue());
     }
 
