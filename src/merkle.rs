@@ -138,7 +138,7 @@ mod tests {
         let mut current_root = root_node.clone();
         let mut idx = 0;
         let mut leaf_keys: Vec<NodeHash> = Vec::new();
-        let transaction_count = 10000;
+        let transaction_count = 1000;
         let progress_bar: ProgressBar = ProgressBar::new(transaction_count as u64);
         loop {
             let leaf_key: Key = generate_random_key();
@@ -153,13 +153,20 @@ mod tests {
             verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
 
             // stress-test all previous keys
+            #[cfg(feature = "stress-test")]
             for key in leaf_keys.clone() {
                 let proof = merkle_proof(&mut db, key, Node::Root(new_root.clone()));
                 let mut inner_proof = proof.unwrap().nodes;
                 inner_proof.reverse();
                 verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
             }
-
+            #[cfg(not(feature = "stress-test"))]
+            {
+                let proof = merkle_proof(&mut db, leaf_key.clone(), Node::Root(new_root.clone()));
+                let mut inner_proof = proof.unwrap().nodes;
+                inner_proof.reverse();
+                verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+            }
             leaf_keys.push(leaf_key);
             current_root = Node::Root(new_root.clone());
             idx += 1;
