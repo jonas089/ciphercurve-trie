@@ -1,113 +1,178 @@
 // Compute Merkle Proof for a Leaf at a given point in time (e.g. at a Snapshot)
-use crate::default_hash;
-use crate::store::db::InMemoryDB;
-use crate::store::types::Node;
+use crate::store::{
+    db::InMemoryDB,
+    types::{Hashable, Node, NodeHash, RootHash},
+};
 // obtain the merkle path for a leaf
-pub fn merkle_proof(
-    db: &mut InMemoryDB,
-    key: Vec<u8>,
-) -> (Vec<(Option<Box<Node>>, bool)>, Option<(Option<Node>, bool)>) {
+pub fn merkle_proof(db: &mut InMemoryDB, key: Vec<u8>, trie_root: Node) -> Option<MerkleProof> {
     assert_eq!(key.len(), 256);
-    // 0(false): left, 1(true): right
-    let mut siblings: Vec<(Option<Box<Node>>, bool)> = Vec::new();
-    // get the parent up to the root and collect all the siblings
-    let mut current_idx: Vec<u8> = key.clone();
-    let mut parent_idx: Vec<u8> = key.clone();
-    parent_idx.pop();
-
-    while parent_idx.len() > 0 {
-        let parent = db
-            .get(&parent_idx)
-            .expect("Failed to get parent for node")
-            .to_owned();
-
-        match parent {
-            Node::Branch(branch) => {
-                if current_idx.last().unwrap() == &0 {
-                    siblings.push((branch.right_child, true));
+    let mut idx: usize = 0;
+    let mut proof: MerkleProof = MerkleProof { nodes: Vec::new() };
+    let mut current_node = trie_root.clone();
+    let mut digit: u8 = key[idx];
+    loop {
+        match &mut current_node {
+            Node::Root(root) => {
+                proof.nodes.push((false, Node::Root(root.clone())));
+                if digit == 0 {
+                    let left_child = db.get(&root.left.clone().unwrap()).unwrap();
+                    current_node = left_child.clone();
+                    proof.nodes.push((false, left_child.clone()));
                 } else {
-                    siblings.push((branch.left_child, false));
+                    let right_child = db.get(&root.right.clone().unwrap()).unwrap();
+                    current_node = right_child.clone();
+                    proof.nodes.push((true, right_child.clone()));
                 }
-                current_idx.pop();
             }
-            Node::Leaf(_) => {
-                panic!("Leaf can't be Root Branch");
+            Node::Branch(branch) => {
+                idx += branch.key.len();
+                digit = key[idx];
+                if digit == 0 {
+                    current_node = db.get(&branch.left.clone().unwrap()).unwrap().clone();
+                    proof.nodes.push((false, current_node.clone()));
+                } else {
+                    current_node = db.get(&branch.right.clone().unwrap()).unwrap().clone();
+                    proof.nodes.push((true, current_node.clone()));
+                }
             }
+            Node::Leaf(_) => return Some(proof),
         }
-        parent_idx.pop();
     }
-    #[allow(unused_assignments)]
-    let mut root_sibling: Option<(Option<Node>, bool)> = None;
-    if key.get(0).unwrap() == &0 {
-        root_sibling = Some((db.root.right_child.clone(), true));
-    } else {
-        root_sibling = Some((db.root.left_child.clone(), false));
-    }
-    (siblings, root_sibling)
 }
 
-pub fn compute_root(
-    merkle_proof: (Vec<(Option<Box<Node>>, bool)>, Option<(Option<Node>, bool)>),
-    leaf_hash: Vec<u8>,
-) -> Vec<u8> {
-    let merkle_path_base = merkle_proof.0.clone();
-    let mut current_hash: Vec<u8> = leaf_hash;
-    for sibling in merkle_path_base {
-        let current_sibling = sibling.0;
-        let sibling_hash: Option<Vec<u8>> = match current_sibling {
-            Some(sibling) => match *sibling {
-                Node::Branch(branch) => Some(branch.hash.unwrap().to_vec()),
-                Node::Leaf(leaf) => Some(leaf.hash.unwrap().to_vec()),
-            },
-            None => None,
-        };
-        if sibling.1 == false {
-            if let Some(mut hash) = sibling_hash {
-                hash.append(&mut current_hash);
-                current_hash = default_hash(hash);
-            } else {
-                let mut preimage = vec![0];
-                preimage.append(&mut current_hash);
-                current_hash = default_hash(preimage);
-            }
+pub fn verify_merkle_proof(inner_proof: Vec<(bool, Node)>, state_root_hash: RootHash) {
+    let mut current_hash: Option<(bool, NodeHash)> = None;
+    let mut root_hash: Option<RootHash> = None;
+    for (idx, node) in inner_proof.into_iter().enumerate() {
+        if idx == 0 {
+            // must be a leaf
+            let mut leaf = node.1.unwrap_as_leaf();
+            leaf.hash();
+            current_hash = Some((node.0, leaf.hash.unwrap()));
         } else {
-            if let Some(mut hash) = sibling_hash {
-                current_hash.append(&mut hash);
-                current_hash = default_hash(current_hash);
-            } else {
-                current_hash.push(1);
-                current_hash = default_hash(current_hash);
+            match node.1 {
+                Node::Root(mut root) => {
+                    if current_hash.clone().unwrap().0 == false {
+                        root.left = Some(current_hash.clone().unwrap().1);
+                    } else {
+                        root.right = Some(current_hash.clone().unwrap().1);
+                    }
+                    root.hash();
+                    root_hash = root.hash;
+                }
+                Node::Branch(mut branch) => {
+                    if current_hash.clone().unwrap().0 == false {
+                        branch.left = Some(current_hash.clone().unwrap().1);
+                    } else {
+                        branch.right = Some(current_hash.clone().unwrap().1);
+                    }
+                    branch.hash();
+                    current_hash = Some((node.0, branch.hash.unwrap()));
+                }
+                Node::Leaf(_) => panic!("Invalid Node variant in Merkle Proof"),
             }
         }
+    }
+    // if this assertion passes, the merkle proof is valid
+    // for the given root hash
+    assert_eq!(&state_root_hash, &root_hash.unwrap());
+}
+
+#[derive(Clone, Debug)]
+pub struct MerkleProof {
+    pub nodes: Vec<(bool, Node)>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crate::{
+        insert_leaf,
+        merkle::verify_merkle_proof,
+        store::{
+            db::InMemoryDB,
+            types::{Hashable, Key, Leaf, Node, NodeHash, Root},
+        },
+    };
+
+    use super::merkle_proof;
+
+    #[test]
+    fn test_merkle_proof() {
+        let mut db = InMemoryDB {
+            nodes: HashMap::new(),
+        };
+        let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
+        leaf_1.hash();
+
+        let mut leaf_2_key = vec![0, 0];
+        for _i in 0..254 {
+            leaf_2_key.push(1);
+        }
+        let mut leaf_2: Leaf = Leaf::empty(leaf_2_key);
+        let root: Root = Root::empty();
+        let root_node: Node = Node::Root(root);
+        let new_root: Root = insert_leaf(&mut db, &mut leaf_1, root_node);
+        let new_root: Root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
+        let proof = merkle_proof(&mut db, leaf_2.key, Node::Root(new_root.clone()));
+
+        // verify merkle proof
+        let mut inner_proof = proof.unwrap().nodes;
+        inner_proof.reverse();
+        verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+
+        let proof = merkle_proof(&mut db, leaf_1.key, Node::Root(new_root.clone()));
+        let mut inner_proof = proof.unwrap().nodes;
+        inner_proof.reverse();
+        verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+    }
+    #[test]
+    fn simulate_insert_flow() {
+        let mut db = InMemoryDB {
+            nodes: HashMap::new(),
+        };
+        let mut leaf_data: Vec<u8> = vec![0];
+        let root: Root = Root::empty();
+        let root_node: Node = Node::Root(root);
+        let mut current_root = root_node.clone();
+        let mut idx = 0;
+        let mut leaf_keys: Vec<NodeHash> = Vec::new();
+        loop {
+            let leaf_key: Key = generate_random_key();
+            leaf_data.push(0);
+            let mut leaf: Leaf = Leaf::empty(leaf_key.clone());
+            leaf.data = Some(leaf_data.clone());
+            leaf.hash();
+            let new_root: Root = insert_leaf(&mut db, &mut leaf, current_root.clone());
+            let proof = merkle_proof(&mut db, leaf.key, Node::Root(new_root.clone()));
+            let mut inner_proof = proof.unwrap().nodes;
+            inner_proof.reverse();
+            verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+
+            // stress-test all previous keys
+            for key in leaf_keys.clone() {
+                let proof = merkle_proof(&mut db, key, Node::Root(new_root.clone()));
+                let mut inner_proof = proof.unwrap().nodes;
+                inner_proof.reverse();
+                verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+            }
+
+            leaf_keys.push(leaf_key);
+            current_root = Node::Root(new_root.clone());
+            idx += 1;
+            if idx >= 100 {
+                break;
+            }
+        }
+        println!("Memory DB size: {:?}", &db.nodes.len());
     }
 
-    let merkle_path_root = merkle_proof.1.unwrap();
-    #[allow(unused_assignments)]
-    let mut root_sibling_hash: Vec<u8> = Vec::new();
-    #[allow(unused_assignments)]
-    let mut root_hash: Vec<u8> = Vec::new();
-    if merkle_path_root.1 == false {
-        match merkle_path_root.0 {
-            Some(node) => {
-                root_sibling_hash = node.unwrap_as_branch().hash.unwrap();
-            }
-            None => {
-                root_sibling_hash = vec![0];
-            }
-        }
-        root_sibling_hash.append(&mut current_hash);
-        root_hash = default_hash(root_sibling_hash);
-    } else {
-        match merkle_path_root.0 {
-            Some(node) => {
-                root_sibling_hash = node.unwrap_as_branch().hash.unwrap();
-            }
-            None => {
-                root_sibling_hash = vec![1];
-            }
-        }
-        current_hash.append(&mut root_sibling_hash);
-        root_hash = default_hash(current_hash);
+    use rand::Rng;
+    fn generate_random_key() -> Key {
+        let mut rng = rand::thread_rng();
+        (0..256)
+            .map(|_| if rng.gen_bool(0.5) { 1 } else { 0 })
+            .collect()
     }
-    root_hash
 }

@@ -1,180 +1,308 @@
+use store::{
+    db::InMemoryDB,
+    types::{Branch, Hashable, Key, Leaf, Node, Root},
+};
+
 pub mod merkle;
 pub mod store;
-use bincode;
-use serde::{Deserialize, Serialize};
-use store::db::InMemoryDB;
-#[allow(unused_imports)]
-use store::types::{default_hash, Branch, Leaf, Node};
 
-pub fn insert_leaf<T>(db: &mut InMemoryDB, key: Vec<u8>, data: T)
-where
-    T: Serialize + Deserialize<'static>,
-{
-    assert_eq!(key.len(), 256);
-    let mut current_idx: Vec<u8> = Vec::new();
-    // store the new root branch that is the left, or the right child of the root
-    let mut new_root_branch: Option<Node> = None;
-    for (idx, digit) in key.clone().into_iter().enumerate() {
-        current_idx.push(digit);
-        // commit if we are at the leaf idx
-        if idx == key.len() - 1 {
-            // todo: handle collisions
-            let mut new_leaf: Leaf = Leaf {
-                hash: None,
-                key: current_idx.clone(),
-                data: bincode::serialize(&data).expect("Failed to serialize leaf with Bincode"),
-            };
-            new_leaf.hash();
+pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) -> Root {
+    assert_eq!(new_leaf.key.len(), 256);
+    let (modified_nodes, new_root) = traverse_trie(db, new_leaf, root_node, false);
+    let mut new_root = update_modified_leafs(db, modified_nodes, new_root);
+    new_root.hash_and_store(db);
+    new_root
+}
 
-            // find parent and insert leaf as child (LoR depending on idx)
-            let mut parent_idx: Vec<u8> = current_idx.clone();
-            parent_idx.pop();
-            let parent = db.get(&parent_idx).expect("Failed to get parent for node");
-            update_parent(parent, Node::Leaf(new_leaf.clone()), digit);
-            // store the leaf in the db
-            db.insert(&key, Node::Leaf(new_leaf));
-            // done inserting
-            break;
-        }
-        // check if the branch exists, if not create it
-        match db.get(&current_idx) {
-            Some(_) => {
-                // Since the Branch already exists, we don't need to do anything.
-            }
-            None => {
-                let new_branch = Branch {
-                    hash: None,
-                    key: current_idx.clone(),
-                    left_child: None,
-                    right_child: None,
-                };
-                // The Branch does not exist, therefore we must create it.
-                // Insert this Branch as a child to its parent.
-                let mut parent_idx: Vec<u8> = current_idx.clone();
-                parent_idx.pop();
-                if current_idx.len() > 1 {
-                    let parent = db.get(&parent_idx).expect("Failed to get parent for node");
-                    update_parent(parent, Node::Branch(new_branch.clone()), digit);
+pub fn update_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) -> Root {
+    let (modified_nodes, new_root) = traverse_trie(db, new_leaf, root_node, true);
+    let mut new_root = update_modified_leafs(db, modified_nodes, new_root);
+    new_root.hash_and_store(db);
+    new_root
+}
+
+fn traverse_trie(
+    db: &mut InMemoryDB,
+    new_leaf: &mut Leaf,
+    root_node: Node,
+    insert: bool,
+) -> (Vec<(u8, Node)>, Root) {
+    let mut new_root: Root = Root::empty();
+    let mut modified_nodes: Vec<(u8, Node)> = Vec::new();
+    let mut current_node: Node = root_node.clone();
+    let mut current_node_pos: u8 = 0;
+    let mut idx = 0;
+    while idx < new_leaf.key.len() {
+        let digit: u8 = new_leaf.key[idx]; // 0 or 1
+        assert!(digit == 0 || digit == 1);
+        match &mut current_node {
+            Node::Root(root) => {
+                if digit == 0 {
+                    match root.left.clone() {
+                        Some(node_hash) => {
+                            let root_unwrapped: Root = root_node.clone().unwrap_as_root();
+                            modified_nodes.push((0, Node::Root(root_unwrapped)));
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            let mut root = current_node.clone().unwrap_as_root();
+                            root.left = Some(new_leaf.hash.clone().unwrap());
+                            new_leaf.store(db);
+                            new_root = root.clone();
+                            modified_nodes.push((0, Node::Root(root)));
+                            break;
+                        }
+                    }
+                } else {
+                    match root.right.clone() {
+                        Some(node_hash) => {
+                            let root_unwrapped: Root = root_node.clone().unwrap_as_root();
+                            modified_nodes.push((0, Node::Root(root_unwrapped)));
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            let mut root = current_node.clone().unwrap_as_root();
+                            root.right = Some(new_leaf.hash.clone().unwrap());
+                            new_leaf.store(db);
+                            new_root = root.clone();
+                            modified_nodes.push((1, Node::Root(root)));
+                            break;
+                        }
+                    }
                 }
-                db.insert(&current_idx, Node::Branch(new_branch));
             }
-        }
-    }
-
-    let mut hasher_idx: Vec<u8> = current_idx.clone();
-    hasher_idx.pop();
-    // if hasher_idx is 1, then it has no parent
-    // in better words, the parent is the root sibling
-    // which is stored only in the root
-    while hasher_idx.len() > 1 {
-        let mut current_branch: Node = db
-            .get(&hasher_idx)
-            .expect("Failed to find parent branch")
-            .to_owned();
-        match &mut current_branch {
             Node::Branch(branch) => {
-                branch.hash();
-            }
-            Node::Leaf(_) => {
-                panic!("Leaf can't be Branch");
-            }
-        };
-
-        db.insert(&hasher_idx, current_branch.clone());
-
-        let mut parent_idx: Vec<u8> = hasher_idx.clone();
-        parent_idx.pop();
-
-        let mut parent = db
-            .get(&parent_idx)
-            .expect("Failed to get parent for node")
-            .to_owned();
-        update_parent(
-            &mut parent,
-            current_branch.clone(),
-            hasher_idx.last().unwrap().to_owned(),
-        );
-
-        if hasher_idx.len() == 2 {
-            match &mut parent {
-                Node::Branch(branch) => {
-                    branch.hash();
+                idx += branch.key.len();
+                if digit == 0 {
+                    match branch.left.clone() {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                            current_node_pos = 0;
+                        }
+                        None => {
+                            branch.left = Some(new_leaf.hash.clone().unwrap());
+                            new_leaf.store(db);
+                            // don't do this here, do it when re-hashing the trie.
+                            //branch.hash_and_store(db);
+                            modified_nodes.push((0, Node::Branch(branch.clone())));
+                            break;
+                        }
+                    }
+                } else {
+                    match branch.right.clone() {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                            current_node_pos = 1;
+                        }
+                        None => {
+                            branch.left = Some(new_leaf.hash.clone().unwrap());
+                            new_leaf.store(db);
+                            // don't do this here, do it when re-hashing the Trie.
+                            //branch.hash_and_store(db);
+                            modified_nodes.push((1, Node::Branch(branch.clone())));
+                            break;
+                        }
+                    }
                 }
-                Node::Leaf(_) => panic!("Leaf can't be Root Branch"),
             }
-            new_root_branch = Some(parent.clone());
-        };
-        db.insert(&parent_idx, parent.clone());
-        hasher_idx.pop();
-    }
-
-    if key.get(0).unwrap() == &0 {
-        db.root.left_child = new_root_branch;
-    } else {
-        db.root.right_child = new_root_branch;
-    }
-    db.root.hash();
-}
-
-pub fn update_parent(parent: &mut Node, node: Node, digit: u8) {
-    match parent {
-        Node::Branch(branch) => {
-            if digit == 0_u8 {
-                // insert the new branch as a left child to the parent branch
-                branch.left_child = Some(Box::new(node.clone()));
-            } else {
-                // insert the new branch as a right child to the parent branch
-                branch.right_child = Some(Box::new(node.clone()));
+            Node::Leaf(leaf) => {
+                if insert == false {
+                    let neq_idx = find_key_idx_not_eq(&new_leaf.key[idx..].to_vec(), &leaf.key)
+                        .expect("Can't insert duplicate Leaf");
+                    let new_leaf_pos: u8 = new_leaf.key[neq_idx];
+                    // there might be an inefficiency to this?
+                    // we store leaf again with just a different prefix
+                    // maybe won't do this in a future release...
+                    leaf.prefix = Some(leaf.key[neq_idx..].to_vec());
+                    new_leaf.prefix = Some(new_leaf.key[neq_idx..].to_vec());
+                    // replace this leaf with a branch in memory
+                    // re-hashing leafs here because of prefix change
+                    leaf.hash_and_store(db);
+                    new_leaf.hash_and_store(db);
+                    let mut new_branch: Branch = Branch::empty(new_leaf.key[..neq_idx].to_vec());
+                    if new_leaf_pos == 0 {
+                        new_branch.left = new_leaf.hash.clone();
+                        new_branch.right = leaf.hash.clone();
+                    } else {
+                        new_branch.left = leaf.hash.clone();
+                        new_branch.right = new_leaf.hash.clone();
+                    }
+                    modified_nodes.push((current_node_pos, Node::Branch(new_branch)));
+                    break;
+                } else {
+                    if let Some(_) = find_key_idx_not_eq(&new_leaf.key[idx..].to_vec(), &leaf.key) {
+                        panic!("Can't update Leaf since it does not exist");
+                    }
+                    new_leaf.prefix = leaf.prefix.clone();
+                    new_leaf.hash_and_store(db);
+                    let new_branch = modified_nodes
+                        .get(modified_nodes.len() - 1)
+                        .expect("Leaf must have Branch or Root above it")
+                        .clone();
+                    match new_branch.1 {
+                        Node::Root(mut root) => {
+                            if current_node_pos == 0 {
+                                root.left = Some(new_leaf.hash.clone().unwrap());
+                            } else {
+                                root.right = Some(new_leaf.hash.clone().unwrap());
+                            }
+                        }
+                        Node::Branch(mut branch) => {
+                            if current_node_pos == 0 {
+                                branch.left = Some(new_leaf.hash.clone().unwrap());
+                            } else {
+                                branch.right = Some(new_leaf.hash.clone().unwrap());
+                            }
+                        }
+                        _ => panic!("Parent must be Branch or Root"),
+                    };
+                    break;
+                }
             }
         }
-        Node::Leaf(_) => {
-            panic!("Leaf can't be Branch")
-        }
     }
+    (modified_nodes, new_root)
 }
 
-#[test]
-fn test_insert_leaf() {
-    use crate::merkle::compute_root;
-    use crate::merkle::merkle_proof;
-    use crate::store::types::Root;
+fn update_modified_leafs(
+    db: &mut InMemoryDB,
+    mut modified_nodes: Vec<(u8, Node)>,
+    mut new_root: Root,
+) -> Root {
+    modified_nodes.reverse();
+    for chunk in &mut modified_nodes.chunks(2) {
+        if let [child, parent] = chunk {
+            // todo: re-hash child and insert it
+            // todo: hash child, insert it's hash into the parent and re-hash the parent
+            // insert both child and parent into the DB
+            let child_node = child.1.clone();
+            let child_idx = child.0;
+            let parent_node = parent.1.clone();
+            match parent_node {
+                Node::Root(mut root) => match child_node {
+                    Node::Leaf(mut leaf) => {
+                        leaf.hash();
+                        if child_idx == 0 {
+                            root.left = Some(leaf.hash.clone().unwrap());
+                        } else {
+                            root.right = Some(leaf.hash.clone().unwrap());
+                        }
+                        leaf.store(db);
+                        new_root = root.clone();
+                    }
+                    Node::Branch(mut branch) => {
+                        branch.hash();
+                        if child_idx == 0 {
+                            root.left = Some(branch.hash.clone().unwrap());
+                        } else {
+                            root.right = Some(branch.hash.clone().unwrap());
+                        }
+                        branch.store(db);
+                        new_root = root.clone();
+                    }
+                    _ => panic!("Child can't be a Root"),
+                },
+                Node::Branch(mut branch) => match child_node {
+                    Node::Leaf(mut leaf) => {
+                        leaf.hash();
+                        if child_idx == 0 {
+                            branch.left = Some(leaf.hash.clone().unwrap());
+                        } else {
+                            branch.right = Some(leaf.hash.clone().unwrap());
+                        }
+                        leaf.store(db);
+                        branch.hash_and_store(db);
+                    }
+                    Node::Branch(mut branch) => {
+                        branch.hash();
+                        if child_idx == 0 {
+                            branch.left = Some(branch.hash.clone().unwrap());
+                        } else {
+                            branch.right = Some(branch.hash.clone().unwrap());
+                        }
+                        branch.store(db);
+                        branch.hash_and_store(db);
+                    }
+                    _ => panic!("Child can't be a Root"),
+                },
+                _ => panic!("Root can't be a child"),
+            }
+        }
+    }
+    new_root
+}
+
+fn find_key_idx_not_eq(k1: &Key, k2: &Key) -> Option<usize> {
+    // todo: find the index at which the keys are not equal
+    for (idx, digit) in k1.into_iter().enumerate() {
+        if digit != &k2[idx] {
+            return Some(idx);
+        }
+    }
+    return None;
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::store::types::{Hashable, Node, Root};
+    use crate::store::{db::InMemoryDB, types::Leaf};
+    use crate::{insert_leaf, update_leaf};
     use std::collections::HashMap;
-    let mut db: InMemoryDB = InMemoryDB {
-        root: Root {
-            hash: None,
-            left_child: None,
-            right_child: None,
-        },
-        nodes: HashMap::new(),
-    };
-    let key: Vec<u8> = vec![0u8; 256];
 
-    let mut key_2: Vec<u8> = vec![0u8; 255];
-    key_2.push(1);
+    #[test]
+    fn test_insert_leaf() {
+        let mut db = InMemoryDB {
+            nodes: HashMap::new(),
+        };
+        let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
+        let mut leaf_2_key: Vec<u8> = vec![0; 253];
+        for _i in 0..3 {
+            leaf_2_key.push(1);
+        }
+        let mut leaf_2: Leaf = Leaf::empty(leaf_2_key);
 
-    let key_3: Vec<u8> = vec![1u8; 256];
-
-    #[derive(Clone, Debug, Serialize, Deserialize)]
-    struct AnyDataFits {
-        info: String,
+        let mut leaf_3_key: Vec<u8> = vec![0; 253];
+        for _i in 0..3 {
+            leaf_3_key.push(0);
+        }
+        let mut leaf_3 = Leaf::empty(leaf_3_key);
+        leaf_1.hash();
+        leaf_2.hash();
+        leaf_3.hash();
+        let root: Root = Root::empty();
+        let root_node = Node::Root(root);
+        let new_root = insert_leaf(&mut db, &mut leaf_1, root_node);
+        let new_root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
+        assert_eq!(
+            new_root.hash.unwrap(),
+            Root {
+                hash: Some(vec![
+                    170, 229, 131, 77, 235, 12, 173, 127, 222, 26, 105, 40, 22, 13, 179, 45, 178,
+                    246, 170, 244, 16, 171, 204, 67, 102, 94, 208, 139, 143, 112, 136, 169
+                ]),
+                left: Some(vec![
+                    192, 255, 218, 137, 120, 169, 46, 169, 51, 142, 15, 1, 84, 251, 124, 134, 95,
+                    25, 100, 240, 136, 56, 116, 145, 21, 237, 3, 48, 55, 36, 46, 197
+                ]),
+                right: None
+            }
+            .hash
+            .unwrap()
+        );
     }
-
-    let data: AnyDataFits = AnyDataFits {
-        info: "Jonas @ Casper R&D".to_string(),
-    };
-    let data_2: AnyDataFits = AnyDataFits {
-        info: "Tries are incredible!".to_string(),
-    };
-    let data_3: AnyDataFits = AnyDataFits {
-        info: "K.I.Z für Immer!".to_string(),
-    };
-
-    insert_leaf(&mut db, key.clone(), data.clone());
-    insert_leaf(&mut db, key_2.clone(), data_2.clone());
-    insert_leaf(&mut db, key_3.clone(), data_3.clone());
-
-    let merkle_proof = merkle_proof(&mut db, key_3.clone());
-    let leaf_hash: Vec<u8> = db.get(&key_3).unwrap().unwrap_as_leaf().hash.unwrap();
-    let root_hash: Vec<u8> = compute_root(merkle_proof, leaf_hash);
-    assert_eq!(&root_hash, &db.root.hash.unwrap());
+    #[test]
+    fn test_update_leaf() {
+        let mut db = InMemoryDB {
+            nodes: HashMap::new(),
+        };
+        let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
+        leaf_1.hash();
+        let root: Root = Root::empty();
+        let root_node = Node::Root(root);
+        let new_root = insert_leaf(&mut db, &mut leaf_1, root_node);
+        let mut leaf_1_updated: Leaf = Leaf::empty(vec![0; 256]);
+        leaf_1_updated.data = Some(vec![1]);
+        let _new_root = update_leaf(&mut db, &mut leaf_1_updated, Node::Root(new_root));
+        let _leaf_from_db = db.get(&leaf_1_updated.hash.unwrap()).unwrap();
+    }
 }
