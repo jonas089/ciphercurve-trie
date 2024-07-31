@@ -244,13 +244,17 @@ fn find_key_idx_not_eq(k1: &Key, k2: &Key) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    use crate::merkle::tests::{generate_random_data, generate_random_key};
     use crate::store::types::{Hashable, Node, Root};
     use crate::store::{db::InMemoryDB, types::Leaf};
     use crate::{insert_leaf, update_leaf};
+    use colored::*;
+    use indicatif::ProgressBar;
     use std::collections::HashMap;
-
+    use std::time::Instant;
     #[test]
     fn test_insert_leaf() {
+        let start_time = Instant::now();
         let mut db = InMemoryDB {
             nodes: HashMap::new(),
         };
@@ -289,9 +293,15 @@ mod tests {
             .hash
             .unwrap()
         );
+        println!(
+            "{} Elapsed Time: {} µs",
+            "[1x Insert]".yellow(),
+            &start_time.elapsed().as_micros().to_string().blue()
+        );
     }
     #[test]
     fn test_update_leaf() {
+        let start_time = Instant::now();
         let mut db = InMemoryDB {
             nodes: HashMap::new(),
         };
@@ -304,5 +314,43 @@ mod tests {
         leaf_1_updated.data = Some(vec![1]);
         let _new_root = update_leaf(&mut db, &mut leaf_1_updated, Node::Root(new_root));
         let _leaf_from_db = db.get(&leaf_1_updated.hash.unwrap()).unwrap();
+        println!(
+            "{} Elapsed Time: {} µs",
+            "[1x Update]".yellow(),
+            &start_time.elapsed().as_micros().to_string().blue()
+        );
+    }
+    #[test]
+    fn test_insert_leafs() {
+        let transaction_count: u32 = std::env::var("INSERT_TRANSACTION_COUNT")
+            .unwrap_or_else(|_| "10000".to_string())
+            .parse::<u32>()
+            .expect("Invalid argument STRESS_TEST_TRANSACTION_COUNT");
+        let mut transactions: Vec<Leaf> = Vec::new();
+        for _ in 0..transaction_count {
+            let leaf_key = generate_random_key();
+            let leaf: Leaf = Leaf::new(leaf_key, Some(generate_random_data()));
+            transactions.push(leaf);
+        }
+        let start_time = Instant::now();
+        let mut db = InMemoryDB {
+            nodes: HashMap::new(),
+        };
+        let root: Root = Root::empty();
+        let mut root_node = Node::Root(root);
+        let progress_bar: ProgressBar = ProgressBar::new(transaction_count as u64);
+        for mut leaf in transactions {
+            leaf.hash();
+            let new_root = insert_leaf(&mut db, &mut leaf, root_node);
+            root_node = Node::Root(new_root.clone());
+            progress_bar.inc(1);
+        }
+        progress_bar.finish_with_message("Done testing insert!");
+        println!(
+            "[{}x Insert] Elapsed Time: {} s",
+            transaction_count.to_string().yellow(),
+            &start_time.elapsed().as_secs().to_string().blue()
+        );
+        println!("Memory DB size: {}", &db.nodes.len().to_string().blue());
     }
 }

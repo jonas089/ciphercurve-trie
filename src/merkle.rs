@@ -84,7 +84,7 @@ pub struct MerkleProof {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use std::collections::HashMap;
 
     use crate::{
@@ -156,7 +156,6 @@ mod tests {
             inner_proof.reverse();
             verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
 
-            // stress-test all previous keys
             #[cfg(feature = "stress-test")]
             for key in leaf_keys.clone() {
                 let proof = merkle_proof(&mut db, key, Node::Root(new_root.clone()));
@@ -180,15 +179,19 @@ mod tests {
             }
             progress_bar.inc(1);
         }
-        println!("Memory DB size: {:?}", &db.nodes.len());
+        println!("Memory DB size: {}", &db.nodes.len().to_string().blue());
     }
 
     use indicatif::ProgressBar;
     use rand::Rng;
-    fn generate_random_key() -> Key {
+    pub fn generate_random_key() -> Key {
         let mut rng = rand::thread_rng();
         (0..256)
             .map(|_| if rng.gen_bool(0.5) { 1 } else { 0 })
             .collect()
+    }
+    pub fn generate_random_data() -> Key {
+        let mut rng = rand::thread_rng();
+        (0..256).map(|_| rng.gen_range(0..255)).collect()
     }
 }
