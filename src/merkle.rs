@@ -97,6 +97,7 @@ mod tests {
     };
 
     use super::merkle_proof;
+    use colored::*;
 
     #[test]
     fn test_merkle_proof() {
@@ -129,6 +130,7 @@ mod tests {
     }
     #[test]
     fn simulate_insert_flow() {
+        let args: Vec<String> = std::env::args().collect();
         let mut db = InMemoryDB {
             nodes: HashMap::new(),
         };
@@ -138,7 +140,18 @@ mod tests {
         let mut current_root = root_node.clone();
         let mut idx = 0;
         let mut leaf_keys: Vec<NodeHash> = Vec::new();
-        let transaction_count = 1000;
+        let mut transaction_count: u32 = 1000;
+        if let Some(count) = args.get(2) {
+            transaction_count = count.parse::<u32>().unwrap_or({
+                println!(
+                    "{} {}, run: {}",
+                    "To specify a range for".yellow(),
+                    "simulate_insert_flow".italic().blue(),
+                    "cargo test simulate_insert_flow -- SOME_RANGE_U32".black()
+                );
+                1000
+            });
+        }
         let progress_bar: ProgressBar = ProgressBar::new(transaction_count as u64);
         loop {
             let leaf_key: Key = generate_random_key();
