@@ -141,13 +141,13 @@ mod tests {
         let mut idx = 0;
         let mut leaf_keys: Vec<NodeHash> = Vec::new();
         let mut transaction_count: u32 = 1000;
-        if let Some(count) = args.get(2) {
+        if let Some(count) = args.get(3) {
             transaction_count = count.parse::<u32>().unwrap_or({
                 println!(
                     "{} {}, run: {}",
                     "To specify a range for".yellow(),
                     "simulate_insert_flow".italic().blue(),
-                    "cargo test simulate_insert_flow -- SOME_RANGE_U32".black()
+                    "cargo test simulate_insert_flow -- -- SOME_RANGE_U32".black()
                 );
                 1000
             });
