@@ -25,7 +25,7 @@ fn traverse_trie(
     db: &mut InMemoryDB,
     new_leaf: &mut Leaf,
     root_node: Node,
-    insert: bool,
+    update: bool,
 ) -> (Vec<(u8, Node)>, Root) {
     let mut new_root: Root = Root::empty();
     let mut modified_nodes: Vec<(u8, Node)> = Vec::new();
@@ -106,7 +106,7 @@ fn traverse_trie(
                 }
             }
             Node::Leaf(leaf) => {
-                if insert == false {
+                if update == false {
                     let neq_idx = find_key_idx_not_eq(&new_leaf.key[idx..].to_vec(), &leaf.key)
                         .expect("Can't insert duplicate Leaf");
                     let new_leaf_pos: u8 = new_leaf.key[neq_idx];
