@@ -2,9 +2,15 @@
 
 :warning: This Library has not been audited, use at own Risk! :warning:
 
+## Implementation Details
+
+Historical state is preserved for each `root hash`, one can query the `db` for a Root and generate `Merkle Proofs` for `Leaf`s in the `Trie`.
+Each `Merkle Proof` is verified against a `root` to verify that a `Leaf` was present in the `Trie` at some point in time.
+
+
 ## API
 
-This library primarily exposes two entry points, one to insert a new Leaf into a Trie and one to update an existing Leaf in the Trie:
+This library primarily exposes two entry points, one to insert a new `Leaf` into a `Trie` and one to update an existing `Leaf` in the `Trie`:
 
 ```rust
 pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) -> Root {
@@ -22,7 +28,3 @@ pub fn update_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
     new_root
 }
 ```
-
-## Implementation details
-
-Historical state is preserved for each `root hash`, one can query the `db` for a Root and generate `Merkle Proofs` for Leafs in the Trie.
