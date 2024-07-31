@@ -8,10 +8,25 @@ pub mod store;
 
 pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) -> Root {
     assert_eq!(new_leaf.key.len(), 256);
-    // maintain a copy of all nodes that must be updated
-    // and inserted into the db at their new hashs
-    // for each level in the tree at most one node will
-    // be added to this list
+    let (modified_nodes, new_root) = traverse_trie(db, new_leaf, root_node, false);
+    let mut new_root = update_modified_leafs(db, modified_nodes, new_root);
+    new_root.hash_and_store(db);
+    new_root
+}
+
+pub fn update_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) -> Root {
+    let (modified_nodes, new_root) = traverse_trie(db, new_leaf, root_node, true);
+    let mut new_root = update_modified_leafs(db, modified_nodes, new_root);
+    new_root.hash_and_store(db);
+    new_root
+}
+
+fn traverse_trie(
+    db: &mut InMemoryDB,
+    new_leaf: &mut Leaf,
+    root_node: Node,
+    insert: bool,
+) -> (Vec<(u8, Node)>, Root) {
     let mut new_root: Root = Root::empty();
     let mut modified_nodes: Vec<(u8, Node)> = Vec::new();
     let mut current_node: Node = root_node.clone();
@@ -91,31 +106,69 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
                 }
             }
             Node::Leaf(leaf) => {
-                let neq_idx = find_key_idx_not_eq(&new_leaf.key[idx..].to_vec(), &leaf.key)
-                    .expect("Unhandled Exception");
-                let new_leaf_pos: u8 = new_leaf.key[neq_idx];
-                // there might be an inefficiency to this?
-                // we store leaf again with just a different prefix
-                // maybe won't do this in a future release...
-                leaf.prefix = Some(leaf.key[neq_idx..].to_vec());
-                new_leaf.prefix = Some(new_leaf.key[neq_idx..].to_vec());
-                // replace this leaf with a branch in memory
-                // re-hashing leafs here because of prefix change
-                leaf.hash_and_store(db);
-                new_leaf.hash_and_store(db);
-                let mut new_branch: Branch = Branch::empty(new_leaf.key[..neq_idx].to_vec());
-                if new_leaf_pos == 0 {
-                    new_branch.left = new_leaf.hash.clone();
-                    new_branch.right = leaf.hash.clone();
+                if insert == false {
+                    let neq_idx = find_key_idx_not_eq(&new_leaf.key[idx..].to_vec(), &leaf.key)
+                        .expect("Can't insert duplicate Leaf");
+                    let new_leaf_pos: u8 = new_leaf.key[neq_idx];
+                    // there might be an inefficiency to this?
+                    // we store leaf again with just a different prefix
+                    // maybe won't do this in a future release...
+                    leaf.prefix = Some(leaf.key[neq_idx..].to_vec());
+                    new_leaf.prefix = Some(new_leaf.key[neq_idx..].to_vec());
+                    // replace this leaf with a branch in memory
+                    // re-hashing leafs here because of prefix change
+                    leaf.hash_and_store(db);
+                    new_leaf.hash_and_store(db);
+                    let mut new_branch: Branch = Branch::empty(new_leaf.key[..neq_idx].to_vec());
+                    if new_leaf_pos == 0 {
+                        new_branch.left = new_leaf.hash.clone();
+                        new_branch.right = leaf.hash.clone();
+                    } else {
+                        new_branch.left = leaf.hash.clone();
+                        new_branch.right = new_leaf.hash.clone();
+                    }
+                    modified_nodes.push((current_node_pos, Node::Branch(new_branch)));
+                    break;
                 } else {
-                    new_branch.left = leaf.hash.clone();
-                    new_branch.right = new_leaf.hash.clone();
+                    if let Some(_) = find_key_idx_not_eq(&new_leaf.key[idx..].to_vec(), &leaf.key) {
+                        panic!("Can't update Leaf since it does not exist");
+                    }
+                    new_leaf.prefix = leaf.prefix.clone();
+                    new_leaf.hash_and_store(db);
+                    let new_branch = modified_nodes
+                        .get(modified_nodes.len() - 1)
+                        .expect("Leaf must have Branch or Root above it")
+                        .clone();
+                    match new_branch.1 {
+                        Node::Root(mut root) => {
+                            if current_node_pos == 0 {
+                                root.left = Some(new_leaf.hash.clone().unwrap());
+                            } else {
+                                root.right = Some(new_leaf.hash.clone().unwrap());
+                            }
+                        }
+                        Node::Branch(mut branch) => {
+                            if current_node_pos == 0 {
+                                branch.left = Some(new_leaf.hash.clone().unwrap());
+                            } else {
+                                branch.right = Some(new_leaf.hash.clone().unwrap());
+                            }
+                        }
+                        _ => panic!("Parent must be Branch or Root"),
+                    };
+                    break;
                 }
-                modified_nodes.push((current_node_pos, Node::Branch(new_branch)));
-                break;
             }
         }
     }
+    (modified_nodes, new_root)
+}
+
+fn update_modified_leafs(
+    db: &mut InMemoryDB,
+    mut modified_nodes: Vec<(u8, Node)>,
+    mut new_root: Root,
+) -> Root {
     modified_nodes.reverse();
     for chunk in &mut modified_nodes.chunks(2) {
         if let [child, parent] = chunk {
@@ -176,8 +229,6 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
             }
         }
     }
-    new_root.hash = None;
-    new_root.hash_and_store(db);
     new_root
 }
 
@@ -193,9 +244,9 @@ fn find_key_idx_not_eq(k1: &Key, k2: &Key) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use crate::insert_leaf;
     use crate::store::types::{Hashable, Node, Root};
     use crate::store::{db::InMemoryDB, types::Leaf};
+    use crate::{insert_leaf, update_leaf};
     use std::collections::HashMap;
 
     #[test]
@@ -221,6 +272,37 @@ mod tests {
         let root: Root = Root::empty();
         let root_node = Node::Root(root);
         let new_root = insert_leaf(&mut db, &mut leaf_1, root_node);
-        let _ = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
+        let new_root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
+        assert_eq!(
+            new_root.hash.unwrap(),
+            Root {
+                hash: Some(vec![
+                    170, 229, 131, 77, 235, 12, 173, 127, 222, 26, 105, 40, 22, 13, 179, 45, 178,
+                    246, 170, 244, 16, 171, 204, 67, 102, 94, 208, 139, 143, 112, 136, 169
+                ]),
+                left: Some(vec![
+                    192, 255, 218, 137, 120, 169, 46, 169, 51, 142, 15, 1, 84, 251, 124, 134, 95,
+                    25, 100, 240, 136, 56, 116, 145, 21, 237, 3, 48, 55, 36, 46, 197
+                ]),
+                right: None
+            }
+            .hash
+            .unwrap()
+        );
+    }
+    #[test]
+    fn test_update_leaf() {
+        let mut db = InMemoryDB {
+            nodes: HashMap::new(),
+        };
+        let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
+        leaf_1.hash();
+        let root: Root = Root::empty();
+        let root_node = Node::Root(root);
+        let new_root = insert_leaf(&mut db, &mut leaf_1, root_node);
+        let mut leaf_1_updated: Leaf = Leaf::empty(vec![0; 256]);
+        leaf_1_updated.data = Some(vec![1]);
+        let _new_root = update_leaf(&mut db, &mut leaf_1_updated, Node::Root(new_root));
+        let _leaf_from_db = db.get(&leaf_1_updated.hash.unwrap()).unwrap();
     }
 }

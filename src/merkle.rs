@@ -47,7 +47,6 @@ pub fn verify_merkle_proof(inner_proof: Vec<(bool, Node)>, state_root_hash: Root
         if idx == 0 {
             // must be a leaf
             let mut leaf = node.1.unwrap_as_leaf();
-            leaf.hash = None;
             leaf.hash();
             current_hash = Some((node.0, leaf.hash.unwrap()));
         } else {
@@ -58,7 +57,6 @@ pub fn verify_merkle_proof(inner_proof: Vec<(bool, Node)>, state_root_hash: Root
                     } else {
                         root.right = Some(current_hash.clone().unwrap().1);
                     }
-                    root.hash = None;
                     root.hash();
                     root_hash = root.hash;
                 }
@@ -68,7 +66,6 @@ pub fn verify_merkle_proof(inner_proof: Vec<(bool, Node)>, state_root_hash: Root
                     } else {
                         branch.right = Some(current_hash.clone().unwrap().1);
                     }
-                    branch.hash = None;
                     branch.hash();
                     current_hash = Some((node.0, branch.hash.unwrap()));
                 }
@@ -94,7 +91,7 @@ mod tests {
         insert_leaf,
         merkle::verify_merkle_proof,
         store::{
-            db::{self, InMemoryDB},
+            db::InMemoryDB,
             types::{Hashable, Key, Leaf, Node, NodeHash, Root},
         },
     };
