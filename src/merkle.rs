@@ -52,7 +52,7 @@ pub fn verify_merkle_proof(inner_proof: Vec<(bool, Node)>, state_root_hash: Root
         } else {
             match node.1 {
                 Node::Root(mut root) => {
-                    if current_hash.clone().unwrap().0 == false {
+                    if !current_hash.clone().unwrap().0 {
                         root.left = Some(current_hash.clone().unwrap().1);
                     } else {
                         root.right = Some(current_hash.clone().unwrap().1);
@@ -61,7 +61,7 @@ pub fn verify_merkle_proof(inner_proof: Vec<(bool, Node)>, state_root_hash: Root
                     root_hash = root.hash;
                 }
                 Node::Branch(mut branch) => {
-                    if current_hash.clone().unwrap().0 == false {
+                    if !current_hash.clone().unwrap().0 {
                         branch.left = Some(current_hash.clone().unwrap().1);
                     } else {
                         branch.right = Some(current_hash.clone().unwrap().1);

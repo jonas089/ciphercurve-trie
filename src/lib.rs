@@ -106,7 +106,7 @@ fn traverse_trie(
                 }
             }
             Node::Leaf(leaf) => {
-                if update == false {
+                if !update {
                     let neq_idx = find_key_idx_not_eq(&new_leaf.key[idx..].to_vec(), &leaf.key)
                         .expect("Can't insert duplicate Leaf");
                     let new_leaf_pos: u8 = new_leaf.key[neq_idx];
@@ -130,13 +130,13 @@ fn traverse_trie(
                     modified_nodes.push((current_node_pos, Node::Branch(new_branch)));
                     break;
                 } else {
-                    if let Some(_) = find_key_idx_not_eq(&new_leaf.key[idx..].to_vec(), &leaf.key) {
+                    if find_key_idx_not_eq(&new_leaf.key[idx..].to_vec(), &leaf.key).is_some() {
                         panic!("Can't update Leaf since it does not exist");
                     }
                     new_leaf.prefix = leaf.prefix.clone();
                     new_leaf.hash_and_store(db);
                     let new_branch = modified_nodes
-                        .get(modified_nodes.len() - 1)
+                        .last()
                         .expect("Leaf must have Branch or Root above it")
                         .clone();
                     match new_branch.1 {
@@ -234,12 +234,12 @@ fn update_modified_leafs(
 
 fn find_key_idx_not_eq(k1: &Key, k2: &Key) -> Option<usize> {
     // todo: find the index at which the keys are not equal
-    for (idx, digit) in k1.into_iter().enumerate() {
+    for (idx, digit) in k1.iter().enumerate() {
         if digit != &k2[idx] {
             return Some(idx);
         }
     }
-    return None;
+    None
 }
 
 #[cfg(test)]
