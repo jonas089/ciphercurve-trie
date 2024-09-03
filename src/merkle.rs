@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 // Compute Merkle Proof for a Leaf at a given point in time (e.g. at a Snapshot)
 use crate::store::{
     db::InMemoryDB,
@@ -78,7 +80,7 @@ pub fn verify_merkle_proof(inner_proof: Vec<(bool, Node)>, state_root_hash: Root
     assert_eq!(&state_root_hash, &root_hash.unwrap());
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MerkleProof {
     pub nodes: Vec<(bool, Node)>,
 }

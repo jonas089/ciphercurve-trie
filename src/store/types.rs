@@ -7,7 +7,7 @@ pub type NodeHash = Vec<u8>;
 pub type Key = Vec<u8>;
 pub type Data = Vec<u8>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Node {
     Root(Root),
     Branch(Branch),
