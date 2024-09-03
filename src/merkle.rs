@@ -42,7 +42,8 @@ pub fn merkle_proof(db: &mut InMemoryDB, key: Vec<u8>, trie_root: Node) -> Optio
     }
 }
 
-pub fn verify_merkle_proof(inner_proof: Vec<(bool, Node)>, state_root_hash: RootHash) {
+pub fn verify_merkle_proof(mut inner_proof: Vec<(bool, Node)>, state_root_hash: RootHash) {
+    inner_proof.reverse();
     let mut current_hash: Option<(bool, NodeHash)> = None;
     let mut root_hash: Option<RootHash> = None;
     for (idx, node) in inner_proof.into_iter().enumerate() {
@@ -122,12 +123,10 @@ pub mod tests {
 
         // verify merkle proof
         let mut inner_proof = proof.unwrap().nodes;
-        inner_proof.reverse();
         verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
 
         let proof = merkle_proof(&mut db, leaf_1.key, Node::Root(new_root.clone()));
         let mut inner_proof = proof.unwrap().nodes;
-        inner_proof.reverse();
         verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
     }
     #[test]
@@ -157,21 +156,18 @@ pub mod tests {
             let new_root: Root = insert_leaf(&mut db, &mut leaf.clone(), current_root.clone());
             let proof = merkle_proof(&mut db, leaf.key.clone(), Node::Root(new_root.clone()));
             let mut inner_proof = proof.unwrap().nodes;
-            inner_proof.reverse();
             verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
 
             #[cfg(feature = "stress-test")]
             for key in leaf_keys.clone() {
                 let proof = merkle_proof(&mut db, key, Node::Root(new_root.clone()));
                 let mut inner_proof = proof.unwrap().nodes;
-                inner_proof.reverse();
                 verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
             }
             #[cfg(not(feature = "stress-test"))]
             {
                 let proof = merkle_proof(&mut db, leaf.key.clone(), Node::Root(new_root.clone()));
                 let mut inner_proof = proof.unwrap().nodes;
-                inner_proof.reverse();
                 verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
             }
             leaf_keys.push(leaf.key.clone());
