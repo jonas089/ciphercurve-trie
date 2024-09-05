@@ -1,12 +1,12 @@
 use store::{
-    db::InMemoryDB,
+    db::Database,
     types::{Branch, Hashable, Key, Leaf, Node, Root},
 };
 
 pub mod merkle;
 pub mod store;
 
-pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) -> Root {
+pub fn insert_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) -> Root {
     assert_eq!(new_leaf.key.len(), 256);
     let (modified_nodes, new_root) = traverse_trie(db, new_leaf, root_node, false);
     let mut new_root = update_modified_leafs(db, modified_nodes, new_root);
@@ -14,7 +14,7 @@ pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
     new_root
 }
 
-pub fn update_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) -> Root {
+pub fn update_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) -> Root {
     let (modified_nodes, new_root) = traverse_trie(db, new_leaf, root_node, true);
     let mut new_root = update_modified_leafs(db, modified_nodes, new_root);
     new_root.hash_and_store(db);
@@ -22,7 +22,7 @@ pub fn update_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) ->
 }
 
 fn traverse_trie(
-    db: &mut InMemoryDB,
+    db: &mut dyn Database,
     new_leaf: &mut Leaf,
     root_node: Node,
     update: bool,
@@ -167,7 +167,7 @@ fn traverse_trie(
 }
 
 fn update_modified_leafs(
-    db: &mut InMemoryDB,
+    db: &mut dyn Database,
     mut modified_nodes: Vec<(u8, Node)>,
     mut new_root: Root,
 ) -> Root {
@@ -225,8 +225,9 @@ fn find_key_idx_not_eq(k1: &Key, k2: &Key) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use crate::merkle::tests::{generate_random_data, generate_random_key};
+    use crate::store::db::sql::SqLiteDB;
     use crate::store::types::{Hashable, Node, Root};
-    use crate::store::{db::InMemoryDB, types::Leaf};
+    use crate::store::{db::Database, db::InMemoryDB, types::Leaf};
     use crate::{insert_leaf, update_leaf};
     use colored::*;
     use indicatif::ProgressBar;
@@ -332,5 +333,54 @@ mod tests {
             &start_time.elapsed().as_secs().to_string().blue()
         );
         println!("Memory DB size: {}", &db.nodes.len().to_string().blue());
+    }
+    #[test]
+    fn test_sql_db() {
+        let start_time = Instant::now();
+        let mut db = SqLiteDB {
+            path: "./trie_db.sqlite",
+            cache: None,
+        };
+        db.setup();
+        let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
+        let mut leaf_2_key: Vec<u8> = vec![0; 253];
+        for _i in 0..3 {
+            leaf_2_key.push(1);
+        }
+        let mut leaf_2: Leaf = Leaf::empty(leaf_2_key);
+
+        let mut leaf_3_key: Vec<u8> = vec![0; 253];
+        for _i in 0..3 {
+            leaf_3_key.push(0);
+        }
+        let mut leaf_3 = Leaf::empty(leaf_3_key);
+        leaf_1.hash();
+        leaf_2.hash();
+        leaf_3.hash();
+        let root: Root = Root::empty();
+        let root_node = Node::Root(root);
+        let new_root = insert_leaf(&mut db, &mut leaf_1, root_node);
+        let new_root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
+        assert_eq!(
+            new_root.hash.unwrap(),
+            Root {
+                hash: Some(vec![
+                    170, 229, 131, 77, 235, 12, 173, 127, 222, 26, 105, 40, 22, 13, 179, 45, 178,
+                    246, 170, 244, 16, 171, 204, 67, 102, 94, 208, 139, 143, 112, 136, 169
+                ]),
+                left: Some(vec![
+                    192, 255, 218, 137, 120, 169, 46, 169, 51, 142, 15, 1, 84, 251, 124, 134, 95,
+                    25, 100, 240, 136, 56, 116, 145, 21, 237, 3, 48, 55, 36, 46, 197
+                ]),
+                right: None
+            }
+            .hash
+            .unwrap()
+        );
+        println!(
+            "{} Elapsed Time: {} µs",
+            "[1x Insert]".yellow(),
+            &start_time.elapsed().as_micros().to_string().blue()
+        );
     }
 }

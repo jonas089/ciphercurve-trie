@@ -1,4 +1,4 @@
-use super::db::InMemoryDB;
+use super::db::Database;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -50,7 +50,7 @@ impl Root {
             right: None,
         }
     }
-    pub fn store(&self, db: &mut InMemoryDB) {
+    pub fn store(&self, db: &mut dyn Database) {
         db.insert(
             &self
                 .hash
@@ -59,7 +59,7 @@ impl Root {
             Node::Root(self.clone()),
         )
     }
-    pub fn hash_and_store(&mut self, db: &mut InMemoryDB) {
+    pub fn hash_and_store(&mut self, db: &mut dyn Database) {
         self.hash = None;
         self.hash();
         self.store(db);
@@ -91,7 +91,7 @@ impl Branch {
             right,
         }
     }
-    pub fn store(&self, db: &mut InMemoryDB) {
+    pub fn store(&self, db: &mut dyn Database) {
         db.insert(
             &self
                 .hash
@@ -100,7 +100,7 @@ impl Branch {
             Node::Branch(self.clone()),
         )
     }
-    pub fn hash_and_store(&mut self, db: &mut InMemoryDB) {
+    pub fn hash_and_store(&mut self, db: &mut dyn Database) {
         self.hash = None;
         self.hash();
         self.store(db);
@@ -136,12 +136,12 @@ impl Leaf {
             data,
         }
     }
-    pub fn hash_and_store(&mut self, db: &mut InMemoryDB) {
+    pub fn hash_and_store(&mut self, db: &mut dyn Database) {
         self.hash = None;
         self.hash();
         self.store(db);
     }
-    pub fn store(&self, db: &mut InMemoryDB) {
+    pub fn store(&self, db: &mut dyn Database) {
         db.insert(
             &self
                 .hash
