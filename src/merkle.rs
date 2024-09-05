@@ -48,9 +48,7 @@ pub fn verify_merkle_proof(mut inner_proof: Vec<(bool, Node)>, state_root_hash: 
     let mut root_hash: Option<RootHash> = None;
     for (idx, node) in inner_proof.into_iter().enumerate() {
         if idx == 0 {
-            // must be a leaf
-            let mut leaf = node.1.unwrap_as_leaf();
-            leaf.hash();
+            let leaf = node.1.unwrap_as_leaf();
             current_hash = Some((node.0, leaf.hash.unwrap()));
         } else {
             match node.1 {

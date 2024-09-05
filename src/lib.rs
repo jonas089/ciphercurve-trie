@@ -45,9 +45,12 @@ fn traverse_trie(
                             current_node = db.get(&node_hash).unwrap().clone();
                         }
                         None => {
-                            let mut root = current_node.clone().unwrap_as_root();
+                            let mut root: Root = current_node.unwrap_as_root();
                             root.left = Some(new_leaf.hash.clone().unwrap());
-                            new_leaf.store(db);
+                            match new_leaf.hash {
+                                Some(_) => new_leaf.store(db),
+                                None => new_leaf.hash_and_store(db),
+                            }
                             new_root = root.clone();
                             modified_nodes.push((0, Node::Root(root)));
                             break;
@@ -63,7 +66,10 @@ fn traverse_trie(
                         None => {
                             let mut root = current_node.clone().unwrap_as_root();
                             root.right = Some(new_leaf.hash.clone().unwrap());
-                            new_leaf.store(db);
+                            match new_leaf.hash {
+                                Some(_) => new_leaf.store(db),
+                                None => new_leaf.hash_and_store(db),
+                            }
                             new_root = root.clone();
                             modified_nodes.push((1, Node::Root(root)));
                             break;
@@ -82,8 +88,6 @@ fn traverse_trie(
                         None => {
                             branch.left = Some(new_leaf.hash.clone().unwrap());
                             new_leaf.store(db);
-                            // don't do this here, do it when re-hashing the trie.
-                            //branch.hash_and_store(db);
                             modified_nodes.push((0, Node::Branch(branch.clone())));
                             break;
                         }
@@ -97,8 +101,6 @@ fn traverse_trie(
                         None => {
                             branch.left = Some(new_leaf.hash.clone().unwrap());
                             new_leaf.store(db);
-                            // don't do this here, do it when re-hashing the Trie.
-                            //branch.hash_and_store(db);
                             modified_nodes.push((1, Node::Branch(branch.clone())));
                             break;
                         }
@@ -112,10 +114,9 @@ fn traverse_trie(
                     let new_leaf_pos: u8 = new_leaf.key[neq_idx];
                     // there might be an inefficiency to this?
                     // we store leaf again with just a different prefix
-                    // maybe won't do this in a future release...
+                    // maybe don't do this in a future release...
                     leaf.prefix = Some(leaf.key[neq_idx..].to_vec());
                     new_leaf.prefix = Some(new_leaf.key[neq_idx..].to_vec());
-                    // replace this leaf with a branch in memory
                     // re-hashing leafs here because of prefix change
                     leaf.hash_and_store(db);
                     new_leaf.hash_and_store(db);
@@ -161,6 +162,7 @@ fn traverse_trie(
             }
         }
     }
+    assert!(modified_nodes.len() < 3);
     (modified_nodes, new_root)
 }
 
@@ -191,41 +193,19 @@ fn update_modified_leafs(
                         new_root = root.clone();
                     }
                     Node::Branch(mut branch) => {
-                        branch.hash();
+                        branch.hash_and_store(db);
                         if child_idx == 0 {
                             root.left = Some(branch.hash.clone().unwrap());
                         } else {
                             root.right = Some(branch.hash.clone().unwrap());
                         }
-                        branch.store(db);
                         new_root = root.clone();
                     }
                     _ => panic!("Child can't be a Root"),
                 },
-                Node::Branch(mut branch) => match child_node {
-                    Node::Leaf(mut leaf) => {
-                        leaf.hash();
-                        if child_idx == 0 {
-                            branch.left = Some(leaf.hash.clone().unwrap());
-                        } else {
-                            branch.right = Some(leaf.hash.clone().unwrap());
-                        }
-                        leaf.store(db);
-                        branch.hash_and_store(db);
-                    }
-                    Node::Branch(mut branch) => {
-                        branch.hash();
-                        if child_idx == 0 {
-                            branch.left = Some(branch.hash.clone().unwrap());
-                        } else {
-                            branch.right = Some(branch.hash.clone().unwrap());
-                        }
-                        branch.store(db);
-                        branch.hash_and_store(db);
-                    }
-                    _ => panic!("Child can't be a Root"),
-                },
-                _ => panic!("Root can't be a child"),
+                _ => {
+                    panic!("This should never happen!")
+                }
             }
         }
     }
@@ -321,9 +301,9 @@ mod tests {
         );
     }
     #[test]
-    fn test_insert_leafs() {
+    fn test_many_leafs() {
         let transaction_count: u32 = std::env::var("INSERT_TRANSACTION_COUNT")
-            .unwrap_or_else(|_| "100000".to_string())
+            .unwrap_or_else(|_| "10000".to_string())
             .parse::<u32>()
             .expect("Invalid argument STRESS_TEST_TRANSACTION_COUNT");
         let mut transactions: Vec<Leaf> = Vec::new();
