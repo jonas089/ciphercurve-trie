@@ -11,6 +11,16 @@ Each `Merkle Proof` is verified against a `root` to verify that a `Leaf` was pre
 
 An example of constructing the in-memory `db`, inserting a `Leafs` and verifying `Merkle Proof` can be found [here](https://github.com/jonas089/jonas089-trie/blob/master/src/merkle.rs)
 
+## Experimental SQLite Support
+New Feature! The InMemoryDB is now optional and can be replaced with an SQLite table.
+
+To enable this feature, include the `sqlite` flag:
+
+```rust
+cargo test --features sqlite test_sql_db
+```
+
+
 ## API
 
 This library primarily exposes two entry points, one to insert a new `Leaf` into a `Trie` and one to update an existing `Leaf` in the `Trie`:

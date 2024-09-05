@@ -334,6 +334,8 @@ mod tests {
         );
         println!("Memory DB size: {}", &db.nodes.len().to_string().blue());
     }
+
+    #[cfg(feature = "sqlite")]
     #[test]
     fn test_sql_db() {
         let start_time = Instant::now();

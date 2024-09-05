@@ -19,7 +19,7 @@ impl Database for InMemoryDB {
     }
 }
 
-//#[cfg(feature = "sqlite")]
+#[cfg(feature = "sqlite")]
 pub mod sql {
     extern crate rusqlite;
     use super::Database;
