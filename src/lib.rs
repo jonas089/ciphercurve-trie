@@ -225,7 +225,6 @@ fn find_key_idx_not_eq(k1: &Key, k2: &Key) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use crate::merkle::tests::{generate_random_data, generate_random_key};
-    use crate::store::db::sql::SqLiteDB;
     use crate::store::types::{Hashable, Node, Root};
     use crate::store::{db::Database, db::InMemoryDB, types::Leaf};
     use crate::{insert_leaf, update_leaf};
@@ -338,6 +337,9 @@ mod tests {
     #[cfg(feature = "sqlite")]
     #[test]
     fn test_sql_db() {
+        use crate::merkle::{merkle_proof, verify_merkle_proof};
+        use crate::store::db::sql::SqLiteDB;
+
         let start_time = Instant::now();
         let mut db = SqLiteDB {
             path: "./trie_db.sqlite",
@@ -364,7 +366,7 @@ mod tests {
         let new_root = insert_leaf(&mut db, &mut leaf_1, root_node);
         let new_root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
         assert_eq!(
-            new_root.hash.unwrap(),
+            new_root.hash.clone().unwrap(),
             Root {
                 hash: Some(vec![
                     170, 229, 131, 77, 235, 12, 173, 127, 222, 26, 105, 40, 22, 13, 179, 45, 178,
@@ -384,5 +386,13 @@ mod tests {
             "[1x Insert]".yellow(),
             &start_time.elapsed().as_micros().to_string().blue()
         );
+        let mut leaf_1: Leaf = Leaf::empty(vec![1u8; 256]);
+        leaf_1.hash();
+        let root: Root = new_root;
+        let root_node: Node = Node::Root(root);
+        let new_root: Root = insert_leaf(&mut db, &mut leaf_1, root_node);
+        let proof = merkle_proof(&mut db, leaf_1.key, Node::Root(new_root.clone()));
+        let inner_proof = proof.unwrap().nodes;
+        verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
     }
 }
