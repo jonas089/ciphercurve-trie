@@ -86,15 +86,16 @@ pub struct MerkleProof {
 
 #[cfg(test)]
 pub mod tests {
-    use std::{collections::HashMap, time::Instant};
+    use std::{collections::HashMap, env, time::Instant};
 
+    #[cfg(feature = "sqlite")]
+    use crate::store::db::sql::TrieDB;
+    #[cfg(not(feature = "sqlite"))]
+    use crate::store::db::TrieDB;
     use crate::{
         insert_leaf,
         merkle::verify_merkle_proof,
-        store::{
-            db::InMemoryDB,
-            types::{Hashable, Key, Leaf, Node, NodeHash, Root},
-        },
+        store::types::{Hashable, Key, Leaf, Node, NodeHash, Root},
     };
 
     use super::merkle_proof;
@@ -102,8 +103,15 @@ pub mod tests {
 
     #[test]
     fn test_merkle_proof() {
-        let mut db = InMemoryDB {
+        #[cfg(not(feature = "sqlite"))]
+        let mut db = TrieDB {
             nodes: HashMap::new(),
+        };
+
+        #[cfg(feature = "sqlite")]
+        let mut db = TrieDB {
+            path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),
+            cache: None,
         };
         let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
         leaf_1.hash();
@@ -129,13 +137,20 @@ pub mod tests {
     }
     #[test]
     fn simulate_insert_flow() {
-        let mut db = InMemoryDB {
+        #[cfg(not(feature = "sqlite"))]
+        let mut db = TrieDB {
             nodes: HashMap::new(),
+        };
+
+        #[cfg(feature = "sqlite")]
+        let mut db = TrieDB {
+            path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),
+            cache: None,
         };
         let root: Root = Root::empty();
         let root_node: Node = Node::Root(root);
         let mut current_root = root_node.clone();
-        let transaction_count: u32 = std::env::var("STRESS_TEST_TRANSACTION_COUNT")
+        let transaction_count: u32 = env::var("STRESS_TEST_TRANSACTION_COUNT")
             .unwrap_or_else(|_| "10000".to_string())
             .parse::<u32>()
             .expect("Invalid argument STRESS_TEST_TRANSACTION_COUNT");
@@ -178,7 +193,6 @@ pub mod tests {
             transaction_count.to_string().yellow(),
             &start_time.elapsed().as_secs().to_string().blue()
         );
-        println!("Memory DB size: {}", &db.nodes.len().to_string().blue());
     }
 
     use indicatif::ProgressBar;

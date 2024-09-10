@@ -225,18 +225,30 @@ fn find_key_idx_not_eq(k1: &Key, k2: &Key) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use crate::merkle::tests::{generate_random_data, generate_random_key};
+    #[cfg(feature = "sqlite")]
+    use crate::store::db::sql::TrieDB;
+    #[cfg(not(feature = "sqlite"))]
+    use crate::store::db::TrieDB;
     use crate::store::types::{Hashable, Node, Root};
-    use crate::store::{db::Database, db::InMemoryDB, types::Leaf};
+    use crate::store::{db::Database, types::Leaf};
     use crate::{insert_leaf, update_leaf};
     use colored::*;
     use indicatif::ProgressBar;
     use std::collections::HashMap;
+    use std::env;
     use std::time::Instant;
     #[test]
     fn test_insert_leaf() {
         let start_time = Instant::now();
-        let mut db = InMemoryDB {
+        #[cfg(not(feature = "sqlite"))]
+        let mut db = TrieDB {
             nodes: HashMap::new(),
+        };
+
+        #[cfg(feature = "sqlite")]
+        let mut db = TrieDB {
+            path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),
+            cache: None,
         };
         let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
         let mut leaf_2_key: Vec<u8> = vec![0; 253];
@@ -282,8 +294,15 @@ mod tests {
     #[test]
     fn test_update_leaf() {
         let start_time = Instant::now();
-        let mut db = InMemoryDB {
+        #[cfg(not(feature = "sqlite"))]
+        let mut db = TrieDB {
             nodes: HashMap::new(),
+        };
+
+        #[cfg(feature = "sqlite")]
+        let mut db = TrieDB {
+            path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),
+            cache: None,
         };
         let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
         leaf_1.hash();
@@ -313,8 +332,15 @@ mod tests {
             transactions.push(leaf);
         }
         let start_time = Instant::now();
-        let mut db = InMemoryDB {
+        #[cfg(not(feature = "sqlite"))]
+        let mut db = TrieDB {
             nodes: HashMap::new(),
+        };
+
+        #[cfg(feature = "sqlite")]
+        let mut db = TrieDB {
+            path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),
+            cache: None,
         };
         let root: Root = Root::empty();
         let mut root_node = Node::Root(root);
@@ -331,6 +357,7 @@ mod tests {
             transaction_count.to_string().yellow(),
             &start_time.elapsed().as_secs().to_string().blue()
         );
+        #[cfg(not(feature = "sqlite"))]
         println!("Memory DB size: {}", &db.nodes.len().to_string().blue());
     }
 
@@ -338,11 +365,11 @@ mod tests {
     #[test]
     fn test_sql_db() {
         use crate::merkle::{merkle_proof, verify_merkle_proof};
-        use crate::store::db::sql::SqLiteDB;
+        use crate::store::db::sql::TrieDB;
 
         let start_time = Instant::now();
-        let mut db = SqLiteDB {
-            path: "./trie_db.sqlite",
+        let mut db = TrieDB {
+            path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),
             cache: None,
         };
         db.setup();
