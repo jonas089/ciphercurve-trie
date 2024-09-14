@@ -111,7 +111,7 @@ impl Branch {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Leaf {
     pub prefix: Option<Key>,
     pub key: Key,
