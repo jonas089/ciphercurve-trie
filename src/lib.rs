@@ -2,77 +2,65 @@ use std::borrow::BorrowMut;
 
 use store::{
     db::Database,
-    types::{Branch, Hashable, Key, Leaf, Node, Root},
+    types::{Branch, Key, Leaf, Node, Root},
 };
 
 pub mod merkle;
 pub mod store;
 
-pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, root_node: Node) -> bool {
+pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, mut current_node: Node) -> bool {
+    // start with the root, if the child at the idx is a branch, check the prefix.
+    // if the child at the idx is a leaf, compare keys
     let mut idx = 0;
-    let mut current_node = root_node;
+    let mut result: bool = false;
     while idx < leaf_expected.key.len() {
         let digit: u8 = leaf_expected.key[idx];
-        match current_node {
+        match &current_node {
+            Node::Branch(branch) => {
+                let branch_prefix = &branch.key;
+                if branch_prefix.as_slice() == &leaf_expected.key[0..branch_prefix.len()] {
+                    idx += branch_prefix.len();
+                    let child_idx = &leaf_expected.key[branch_prefix.len()];
+                    if *child_idx == 0 {
+                        current_node = db.get(&branch.left.clone().unwrap()).unwrap().clone();
+                    } else {
+                        current_node = db.get(&branch.right.clone().unwrap()).unwrap().clone();
+                    }
+                } else {
+                    panic!(
+                        "Branch prefix mismatch: {:?} ||||||| {:?}",
+                        &leaf_expected.key[idx..branch_prefix.len()],
+                        &branch_prefix.as_slice()
+                    )
+                }
+            }
+            Node::Leaf(leaf) => {
+                println!("Found leaf: {:?}", &leaf);
+                result = true;
+                break;
+            }
             Node::Root(root) => {
                 if digit == 0 {
                     match &root.left {
-                        Some(node_hash) => {
-                            current_node = db.get(&node_hash).unwrap().clone();
+                        Some(node) => {
+                            current_node = db.get(&node).unwrap().clone();
+                            idx += 1;
                         }
-                        None => {
-                            println!("No left Child in Root");
-                            return false;
-                        }
+                        None => panic!("Root does not have path"),
                     }
                 } else {
                     match &root.right {
-                        Some(node_hash) => {
-                            current_node = db.get(&node_hash).unwrap().clone();
+                        Some(node) => {
+                            current_node = db.get(&node).unwrap().clone();
+                            idx += 1;
                         }
-                        None => {
-                            println!("No right Child in Root");
-                            return false;
-                        }
+                        None => panic!("Root does not have path"),
                     }
-                }
-            }
-            Node::Branch(branch) => {
-                if digit == 0 {
-                    match &branch.left {
-                        Some(node_hash) => {
-                            current_node = db.get(&node_hash).unwrap().clone();
-                        }
-                        None => {
-                            println!("No left Child in Branch");
-                            return false;
-                        }
-                    }
-                } else {
-                    match &branch.right {
-                        Some(node_hash) => {
-                            current_node = db.get(&node_hash).unwrap().clone();
-                        }
-                        None => {
-                            println!("No right Child in Branch");
-                            return false;
-                        }
-                    }
-                }
-            }
-            Node::Leaf(ref leaf) => {
-                /*println!(
-                    "Leaf left: {:?}, leaf right: {:?}",
-                    &leaf.key, leaf_expected.key
-                );*/
-                if leaf.key != leaf_expected.key {
-                    return false;
                 }
             }
         }
-        idx += 1;
     }
-    true
+    result
 }
 
 pub fn insert_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) -> Root {
@@ -364,7 +352,7 @@ mod tests {
     #[test]
     fn test_many_leafs() {
         let transaction_count: u32 = std::env::var("INSERT_TRANSACTION_COUNT")
-            .unwrap_or_else(|_| "4".to_string())
+            .unwrap_or_else(|_| "100".to_string())
             .parse::<u32>()
             .expect("Invalid argument STRESS_TEST_TRANSACTION_COUNT");
         let mut transactions: Vec<Leaf> = Vec::new();
