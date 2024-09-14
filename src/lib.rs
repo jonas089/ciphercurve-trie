@@ -21,6 +21,65 @@ pub fn update_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) 
     new_root
 }
 
+pub fn check_leaf(db: &mut dyn Database, leaf_key: Vec<u8>, root_node: Node) -> bool {
+    let mut idx = 0;
+    let mut current_node = root_node;
+    while idx < leaf_key.len() {
+        let digit: u8 = leaf_key[idx];
+        match current_node {
+            Node::Root(root) => {
+                if digit == 0 {
+                    match &root.left {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            println!("No left Child in Root");
+                            return false;
+                        }
+                    }
+                } else {
+                    match &root.right {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            println!("No right Child in Root");
+                            return false;
+                        }
+                    }
+                }
+            }
+            Node::Branch(branch) => {
+                if digit == 0 {
+                    match &branch.left {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            println!("No left Child in Branch");
+                            return false;
+                        }
+                    }
+                } else {
+                    match &branch.right {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            println!("No right Child in Branch");
+                            return false;
+                        }
+                    }
+                }
+            }
+            Node::Leaf(_) => {}
+        }
+        idx += 1;
+    }
+    true
+}
+
 fn traverse_trie(
     db: &mut dyn Database,
     new_leaf: &mut Leaf,
@@ -231,11 +290,10 @@ mod tests {
     use crate::store::db::TrieDB;
     use crate::store::types::{Hashable, Node, Root};
     use crate::store::{db::Database, types::Leaf};
-    use crate::{insert_leaf, update_leaf};
+    use crate::{check_leaf, insert_leaf, update_leaf};
     use colored::*;
     use indicatif::ProgressBar;
     use std::collections::HashMap;
-    use std::env;
     use std::time::Instant;
     #[test]
     fn test_insert_leaf() {
@@ -349,6 +407,7 @@ mod tests {
             leaf.hash();
             let new_root = insert_leaf(&mut db, &mut leaf, root_node);
             root_node = Node::Root(new_root.clone());
+            assert!(check_leaf(&mut db, leaf.key, root_node.clone()));
             progress_bar.inc(1);
         }
         progress_bar.finish_with_message("Done testing insert!");
