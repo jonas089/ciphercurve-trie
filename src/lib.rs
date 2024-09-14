@@ -74,8 +74,11 @@ pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, root_node: Node) -
                 }
             }
             Node::Leaf(ref leaf) => {
-                println!("Leaf left: {:?}, leaf right: {:?}", &leaf, leaf_expected);
-                if leaf.data != leaf_expected.data {
+                /*println!(
+                    "Leaf left: {:?}, leaf right: {:?}",
+                    &leaf.key, leaf_expected.key
+                );*/
+                if leaf.key != leaf_expected.key {
                     return false;
                 }
             }
@@ -180,7 +183,7 @@ fn traverse_trie(
                     leaf.prefix = Some(leaf.key[neq_idx..].to_vec());
                     new_leaf.prefix = Some(new_leaf.key[neq_idx..].to_vec());
                     leaf.hash_and_store(db);
-                    new_leaf.store(db);
+                    new_leaf.hash_and_store(db);
                     let mut new_branch: Branch = Branch::empty(new_leaf.key[..neq_idx].to_vec());
                     if new_leaf_pos == 0 {
                         new_branch.left = new_leaf.hash.clone();
@@ -234,7 +237,6 @@ fn update_modified_leafs(
     modified_nodes.reverse();
     for chunk in &mut modified_nodes.chunks(2) {
         if let [child, parent] = chunk {
-            println!("chunk: {:?}", &chunk);
             // todo: re-hash child and insert it
             // todo: hash child, insert it's hash into the parent and re-hash the parent
             // insert both child and parent into the DB
@@ -262,16 +264,26 @@ fn update_modified_leafs(
                     }
                     _ => panic!("Child can't be a Root"),
                 },
-                Node::Branch(mut branch) => {
-                    if child_idx == 0 {
-                        branch.left = Some(branch.hash.clone().unwrap());
-                    } else {
-                        branch.right = Some(branch.hash.clone().unwrap());
+                Node::Branch(mut parent_branch) => match child_node {
+                    Node::Leaf(leaf) => {
+                        if child_idx == 0 {
+                            parent_branch.left = Some(leaf.hash.clone().unwrap());
+                        } else {
+                            parent_branch.right = Some(leaf.hash.clone().unwrap());
+                        }
+                        parent_branch.hash_and_store(db);
                     }
-                    branch.hash_and_store(db);
-
-                    //new_root = root.clone();
-                }
+                    Node::Branch(mut branch) => {
+                        branch.hash_and_store(db);
+                        if child_idx == 0 {
+                            parent_branch.left = Some(branch.hash.clone().unwrap());
+                        } else {
+                            parent_branch.right = Some(branch.hash.clone().unwrap());
+                        }
+                        parent_branch.hash_and_store(db);
+                    }
+                    _ => panic!("Child can't be a Root"),
+                },
                 _ => {
                     panic!("This should never happen!")
                 }
@@ -381,7 +393,7 @@ mod tests {
         let mut transactions: Vec<Leaf> = Vec::new();
         for _ in 0..transaction_count {
             let leaf_key = generate_random_key();
-            let leaf: Leaf = Leaf::new(leaf_key, Some(generate_random_data())); //Some(generate_random_data()));
+            let leaf: Leaf = Leaf::new(leaf_key, Some(generate_random_data()));
             transactions.push(leaf);
         }
         let start_time = Instant::now();
@@ -401,11 +413,11 @@ mod tests {
         for mut leaf in transactions {
             leaf.hash();
             let new_root = insert_leaf(&mut db, &mut leaf, root_node.clone());
-            /*assert!(check_leaf(
+            assert!(check_leaf(
                 &mut db,
                 leaf.clone(),
                 Node::Root(new_root.clone())
-            ));*/
+            ));
             root_node = Node::Root(new_root.clone());
             progress_bar.inc(1);
         }
