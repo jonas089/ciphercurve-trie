@@ -21,12 +21,68 @@ pub fn update_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) 
     new_root
 }
 
-pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf) -> bool {
-    let x = db.get(&leaf_expected.hash.unwrap());
-    match x {
-        Some(_) => true,
-        None => false,
+pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, root_node: Node) -> bool {
+    let mut idx = 0;
+    let mut current_node = root_node;
+    while idx < leaf_expected.key.len() {
+        let digit: u8 = leaf_expected.key[idx];
+        match current_node {
+            Node::Root(root) => {
+                if digit == 0 {
+                    match &root.left {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            println!("No left Child in Root");
+                            return false;
+                        }
+                    }
+                } else {
+                    match &root.right {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            println!("No right Child in Root");
+                            return false;
+                        }
+                    }
+                }
+            }
+            Node::Branch(branch) => {
+                if digit == 0 {
+                    match &branch.left {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            println!("No left Child in Branch");
+                            return false;
+                        }
+                    }
+                } else {
+                    match &branch.right {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            println!("No right Child in Branch");
+                            return false;
+                        }
+                    }
+                }
+            }
+            Node::Leaf(ref leaf) => {
+                println!("Leaf left: {:?}, leaf right: {:?}", &leaf, leaf_expected);
+                if leaf.data != leaf_expected.data {
+                    return false;
+                }
+            }
+        }
+        idx += 1;
     }
+    true
 }
 
 fn traverse_trie(
@@ -73,7 +129,7 @@ fn traverse_trie(
                             root.right = Some(new_leaf.hash.clone().unwrap());
                             new_leaf.store(db);
                             new_root = root.clone();
-                            modified_nodes.push((1, Node::Root(root)));
+                            modified_nodes.push((0, Node::Root(root)));
                             break;
                         }
                     }
@@ -84,6 +140,7 @@ fn traverse_trie(
                 if digit == 0 {
                     match branch.left.clone() {
                         Some(node_hash) => {
+                            modified_nodes.push((current_node_pos, Node::Branch(branch.clone())));
                             current_node = db.get(&node_hash).unwrap().clone();
                             current_node_pos = 0;
                         }
@@ -97,6 +154,7 @@ fn traverse_trie(
                 } else {
                     match branch.right.clone() {
                         Some(node_hash) => {
+                            modified_nodes.push((current_node_pos, Node::Branch(branch.clone())));
                             current_node = db.get(&node_hash).unwrap().clone();
                             current_node_pos = 1;
                         }
@@ -164,7 +222,6 @@ fn traverse_trie(
             }
         }
     }
-    assert!(modified_nodes.len() < 3);
     (modified_nodes, new_root)
 }
 
@@ -184,8 +241,7 @@ fn update_modified_leafs(
             let parent_node = parent.1.clone();
             match parent_node {
                 Node::Root(mut root) => match child_node {
-                    Node::Leaf(mut leaf) => {
-                        leaf.hash();
+                    Node::Leaf(leaf) => {
                         if child_idx == 0 {
                             root.left = Some(leaf.hash.clone().unwrap());
                         } else {
@@ -269,7 +325,6 @@ mod tests {
         let root: Root = Root::empty();
         let root_node = Node::Root(root);
         let new_root = insert_leaf(&mut db, &mut leaf_1, root_node.clone());
-        assert!(check_leaf(&mut db, leaf_1.clone(),));
         let new_root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
         assert_eq!(
             new_root.hash.unwrap(),
@@ -330,7 +385,7 @@ mod tests {
         let mut transactions: Vec<Leaf> = Vec::new();
         for _ in 0..transaction_count {
             let leaf_key = generate_random_key();
-            let leaf: Leaf = Leaf::new(leaf_key, Some(generate_random_data()));
+            let leaf: Leaf = Leaf::new(leaf_key, Some(generate_random_data())); //Some(generate_random_data()));
             transactions.push(leaf);
         }
         let start_time = Instant::now();
@@ -350,7 +405,11 @@ mod tests {
         for mut leaf in transactions {
             leaf.hash();
             let new_root = insert_leaf(&mut db, &mut leaf, root_node.clone());
-            assert!(check_leaf(&mut db, leaf.clone()));
+            assert!(check_leaf(
+                &mut db,
+                leaf.clone(),
+                Node::Root(new_root.clone())
+            ));
             root_node = Node::Root(new_root.clone());
             progress_bar.inc(1);
         }
