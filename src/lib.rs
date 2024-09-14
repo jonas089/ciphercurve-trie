@@ -1,6 +1,6 @@
 use store::{
     db::Database,
-    types::{Branch, Hashable, Key, Leaf, Node, Root},
+    types::{Branch, Key, Leaf, Node, Root},
 };
 
 pub mod merkle;
@@ -22,69 +22,6 @@ pub fn update_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) 
 }
 
 pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, root_node: Node) -> bool {
-    let mut idx = 0;
-    let mut current_node = root_node;
-    while idx < leaf_expected.key.len() {
-        let digit: u8 = leaf_expected.key[idx];
-        match current_node {
-            Node::Root(root) => {
-                if digit == 0 {
-                    match &root.left {
-                        Some(node_hash) => {
-                            current_node = db.get(&node_hash).unwrap().clone();
-                        }
-                        None => {
-                            println!("No left Child in Root");
-                            return false;
-                        }
-                    }
-                } else {
-                    match &root.right {
-                        Some(node_hash) => {
-                            current_node = db.get(&node_hash).unwrap().clone();
-                        }
-                        None => {
-                            println!("No right Child in Root");
-                            return false;
-                        }
-                    }
-                }
-            }
-            Node::Branch(branch) => {
-                if digit == 0 {
-                    match &branch.left {
-                        Some(node_hash) => {
-                            current_node = db.get(&node_hash).unwrap().clone();
-                        }
-                        None => {
-                            println!("No left Child in Branch");
-                            return false;
-                        }
-                    }
-                } else {
-                    match &branch.right {
-                        Some(node_hash) => {
-                            current_node = db.get(&node_hash).unwrap().clone();
-                        }
-                        None => {
-                            println!("No right Child in Branch");
-                            return false;
-                        }
-                    }
-                }
-            }
-            Node::Leaf(ref leaf) => {
-                /*println!(
-                    "Leaf left: {:?}, leaf right: {:?}",
-                    &leaf.key, leaf_expected.key
-                );*/
-                if leaf.key != leaf_expected.key {
-                    return false;
-                }
-            }
-        }
-        idx += 1;
-    }
     true
 }
 
@@ -265,14 +202,6 @@ fn update_modified_leafs(
                     _ => panic!("Child can't be a Root"),
                 },
                 Node::Branch(mut parent_branch) => match child_node {
-                    Node::Leaf(leaf) => {
-                        if child_idx == 0 {
-                            parent_branch.left = Some(leaf.hash.clone().unwrap());
-                        } else {
-                            parent_branch.right = Some(leaf.hash.clone().unwrap());
-                        }
-                        parent_branch.hash_and_store(db);
-                    }
                     Node::Branch(mut branch) => {
                         branch.hash_and_store(db);
                         if child_idx == 0 {
@@ -310,9 +239,9 @@ mod tests {
     use crate::store::db::sql::TrieDB;
     #[cfg(not(feature = "sqlite"))]
     use crate::store::db::TrieDB;
+    use crate::store::types::Leaf;
     use crate::store::types::{Hashable, Node, Root};
-    use crate::store::{db::Database, types::Leaf};
-    use crate::{check_leaf, insert_leaf, update_leaf};
+    use crate::{check_leaf, insert_leaf};
     use colored::*;
     use indicatif::ProgressBar;
     use std::collections::HashMap;
@@ -356,8 +285,8 @@ mod tests {
             &start_time.elapsed().as_micros().to_string().blue()
         );
     }
-    #[test]
-    /*fn test_update_leaf() {
+    /*#[test]
+    fn test_update_leaf() {
         let start_time = Instant::now();
         #[cfg(not(feature = "sqlite"))]
         let mut db = TrieDB {
