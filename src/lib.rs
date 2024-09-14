@@ -1,10 +1,79 @@
+use std::borrow::BorrowMut;
+
 use store::{
     db::Database,
-    types::{Branch, Key, Leaf, Node, Root},
+    types::{Branch, Hashable, Key, Leaf, Node, Root},
 };
 
 pub mod merkle;
 pub mod store;
+
+pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, root_node: Node) -> bool {
+    let mut idx = 0;
+    let mut current_node = root_node;
+    while idx < leaf_expected.key.len() {
+        let digit: u8 = leaf_expected.key[idx];
+        match current_node {
+            Node::Root(root) => {
+                if digit == 0 {
+                    match &root.left {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            println!("No left Child in Root");
+                            return false;
+                        }
+                    }
+                } else {
+                    match &root.right {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            println!("No right Child in Root");
+                            return false;
+                        }
+                    }
+                }
+            }
+            Node::Branch(branch) => {
+                if digit == 0 {
+                    match &branch.left {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            println!("No left Child in Branch");
+                            return false;
+                        }
+                    }
+                } else {
+                    match &branch.right {
+                        Some(node_hash) => {
+                            current_node = db.get(&node_hash).unwrap().clone();
+                        }
+                        None => {
+                            println!("No right Child in Branch");
+                            return false;
+                        }
+                    }
+                }
+            }
+            Node::Leaf(ref leaf) => {
+                /*println!(
+                    "Leaf left: {:?}, leaf right: {:?}",
+                    &leaf.key, leaf_expected.key
+                );*/
+                if leaf.key != leaf_expected.key {
+                    return false;
+                }
+            }
+        }
+        idx += 1;
+    }
+    true
+}
 
 pub fn insert_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) -> Root {
     assert_eq!(new_leaf.key.len(), 256);
@@ -19,10 +88,6 @@ pub fn update_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) 
     let mut new_root = update_modified_leafs(db, modified_nodes, new_root);
     new_root.hash_and_store(db);
     new_root
-}
-
-pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, root_node: Node) -> bool {
-    true
 }
 
 fn traverse_trie(
@@ -89,8 +154,9 @@ fn traverse_trie(
                             current_node_pos = 0;
                         }
                         None => {
+                            new_leaf.store(db);
                             branch.left = Some(new_leaf.hash.clone().unwrap());
-                            modified_nodes.push((0, Node::Branch(branch.clone())));
+                            modified_nodes.push((current_node_pos, Node::Branch(branch.clone())));
                             break;
                         }
                     }
@@ -102,8 +168,9 @@ fn traverse_trie(
                             current_node_pos = 1;
                         }
                         None => {
+                            new_leaf.store(db);
                             branch.left = Some(new_leaf.hash.clone().unwrap());
-                            modified_nodes.push((1, Node::Branch(branch.clone())));
+                            modified_nodes.push((current_node_pos, Node::Branch(branch.clone())));
                             break;
                         }
                     }
@@ -133,32 +200,6 @@ fn traverse_trie(
                     break;
                 } else {
                     todo!("Currently not supported");
-                    /*if find_key_idx_not_eq(&new_leaf.key[idx..].to_vec(), &leaf.key).is_some() {
-                        panic!("Can't update Leaf since it does not exist");
-                    }
-                    new_leaf.prefix = leaf.prefix.clone();
-                    let new_branch = modified_nodes
-                        .last()
-                        .expect("Leaf must have Branch or Root above it")
-                        .clone();
-                    match new_branch.1 {
-                        Node::Root(mut root) => {
-                            if current_node_pos == 0 {
-                                root.left = Some(new_leaf.hash.clone().unwrap());
-                            } else {
-                                root.right = Some(new_leaf.hash.clone().unwrap());
-                            }
-                        }
-                        Node::Branch(mut branch) => {
-                            if current_node_pos == 0 {
-                                branch.left = Some(new_leaf.hash.clone().unwrap());
-                            } else {
-                                branch.right = Some(new_leaf.hash.clone().unwrap());
-                            }
-                        }
-                        _ => panic!("Parent must be Branch or Root"),
-                    };
-                    break;*/
                 }
             }
         }
@@ -172,15 +213,23 @@ fn update_modified_leafs(
     mut new_root: Root,
 ) -> Root {
     modified_nodes.reverse();
-    for chunk in &mut modified_nodes.chunks(2) {
-        if let [child, parent] = chunk {
+    assert!(modified_nodes.len() >= 2);
+    let modified_clone = modified_nodes.clone();
+    for (cnt, chunk) in modified_clone.chunks(2).enumerate() {
+        if let [_, _] = chunk {
+            let mut idx = 0;
+            if cnt == 0 {
+                idx = 1;
+            } else {
+                idx = cnt + 1;
+            }
             // todo: re-hash child and insert it
             // todo: hash child, insert it's hash into the parent and re-hash the parent
             // insert both child and parent into the DB
-            let child_node: Node = child.1.clone();
-            let parent_node = parent.1.clone();
-            let child_idx = child.0;
-            match parent_node {
+            let child_node: Node = modified_nodes[idx - 1].clone().1;
+            let parent_node = modified_nodes[idx].clone().1;
+            let child_idx = modified_nodes[idx - 1].clone().0;
+            let maybe_new_branch: Option<Branch> = match parent_node {
                 Node::Root(mut root) => match child_node {
                     Node::Leaf(leaf) => {
                         if child_idx == 0 {
@@ -189,17 +238,22 @@ fn update_modified_leafs(
                             root.right = Some(leaf.hash.clone().unwrap());
                         }
                         new_root = root.clone();
+                        None
                     }
                     Node::Branch(mut branch) => {
-                        branch.hash_and_store(db);
+                        match branch.hash {
+                            Some(_) => {}
+                            None => branch.hash_and_store(db),
+                        }
                         if child_idx == 0 {
                             root.left = Some(branch.hash.clone().unwrap());
                         } else {
                             root.right = Some(branch.hash.clone().unwrap());
                         }
                         new_root = root.clone();
+                        None
                     }
-                    _ => panic!("Child can't be a Root"),
+                    _ => panic!("This should never happen"),
                 },
                 Node::Branch(mut parent_branch) => match child_node {
                     Node::Branch(mut branch) => {
@@ -210,13 +264,34 @@ fn update_modified_leafs(
                             parent_branch.right = Some(branch.hash.clone().unwrap());
                         }
                         parent_branch.hash_and_store(db);
+                        Some(parent_branch)
                     }
-                    _ => panic!("Child can't be a Root"),
+                    _ => panic!("This should never happen"),
                 },
                 _ => {
-                    panic!("This should never happen!")
+                    panic!("This should never happen")
                 }
+            };
+            match maybe_new_branch {
+                Some(branch) => {
+                    modified_nodes.insert(idx, (modified_nodes[idx].0, Node::Branch(branch)))
+                }
+                None => {}
             }
+        } else {
+            println!("LEFTOVER CHUNK IS BEING IGNORED: {:?}", chunk);
+            let mut root = modified_nodes[modified_nodes.len() - 1]
+                .1
+                .clone()
+                .unwrap_as_root();
+            let branch = modified_nodes[modified_nodes.len() - 2].clone();
+            let branch_unwrapped = branch.1.unwrap_as_branch();
+            if branch.0 == 0 {
+                root.left = Some(branch_unwrapped.hash.unwrap());
+            } else {
+                root.right = Some(branch_unwrapped.hash.unwrap());
+            }
+            new_root = root;
         }
     }
     new_root
@@ -285,34 +360,7 @@ mod tests {
             &start_time.elapsed().as_micros().to_string().blue()
         );
     }
-    /*#[test]
-    fn test_update_leaf() {
-        let start_time = Instant::now();
-        #[cfg(not(feature = "sqlite"))]
-        let mut db = TrieDB {
-            nodes: HashMap::new(),
-        };
 
-        #[cfg(feature = "sqlite")]
-        let mut db = TrieDB {
-            path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),
-            cache: None,
-        };
-        let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
-        leaf_1.hash();
-        let root: Root = Root::empty();
-        let root_node = Node::Root(root);
-        let new_root = insert_leaf(&mut db, &mut leaf_1, root_node);
-        let mut leaf_1_updated: Leaf = Leaf::empty(vec![0; 256]);
-        leaf_1_updated.data = Some(vec![1]);
-        let _new_root = update_leaf(&mut db, &mut leaf_1_updated, Node::Root(new_root));
-        let _leaf_from_db = db.get(&leaf_1_updated.hash.unwrap()).unwrap();
-        println!(
-            "{} Elapsed Time: {} µs",
-            "[1x Update]".yellow(),
-            &start_time.elapsed().as_micros().to_string().blue()
-        );
-    }*/
     #[test]
     fn test_many_leafs() {
         let transaction_count: u32 = std::env::var("INSERT_TRANSACTION_COUNT")

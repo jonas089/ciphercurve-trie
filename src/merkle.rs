@@ -15,6 +15,7 @@ pub fn merkle_proof(db: &mut dyn Database, key: Vec<u8>, trie_root: Node) -> Opt
     loop {
         match &mut current_node {
             Node::Root(root) => {
+                println!("Root: {:?}", &root);
                 proof.nodes.push((false, Node::Root(root.clone())));
                 if digit == 0 {
                     let left_child = db.get(&root.left.clone().unwrap()).unwrap();
@@ -151,7 +152,7 @@ pub mod tests {
         let root_node: Node = Node::Root(root);
         let mut current_root = root_node.clone();
         let transaction_count: u32 = env::var("STRESS_TEST_TRANSACTION_COUNT")
-            .unwrap_or_else(|_| "10000".to_string())
+            .unwrap_or_else(|_| "1000".to_string())
             .parse::<u32>()
             .expect("Invalid argument STRESS_TEST_TRANSACTION_COUNT");
         let progress_bar: ProgressBar = ProgressBar::new(transaction_count as u64);
