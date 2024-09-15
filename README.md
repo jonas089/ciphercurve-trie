@@ -70,3 +70,45 @@ pub fn merkle_proof(db: &mut dyn Database, key: Vec<u8>, trie_root: Node) -> Opt
 }
 
 ```
+
+and
+
+```rust
+pub fn verify_merkle_proof(mut inner_proof: Vec<(bool, Node)>, state_root_hash: RootHash) {
+    inner_proof.reverse();
+    let mut current_hash: Option<(bool, NodeHash)> = None;
+    let mut root_hash: Option<RootHash> = None;
+    for (idx, node) in inner_proof.into_iter().enumerate() {
+        if idx == 0 {
+            let leaf = node.1.unwrap_as_leaf();
+            current_hash = Some((node.0, leaf.hash.unwrap()));
+        } else {
+            match node.1 {
+                Node::Root(mut root) => {
+                    if !current_hash.clone().unwrap().0 {
+                        root.left = Some(current_hash.clone().unwrap().1);
+                    } else {
+                        root.right = Some(current_hash.clone().unwrap().1);
+                    }
+                    root.hash();
+                    root_hash = root.hash;
+                }
+                Node::Branch(mut branch) => {
+                    if !current_hash.clone().unwrap().0 {
+                        branch.left = Some(current_hash.clone().unwrap().1);
+                    } else {
+                        branch.right = Some(current_hash.clone().unwrap().1);
+                    }
+                    branch.hash();
+                    current_hash = Some((node.0, branch.hash.unwrap()));
+                }
+                Node::Leaf(_) => panic!("Invalid Node variant in Merkle Proof"),
+            }
+        }
+    }
+    // if this assertion passes, the merkle proof is valid
+    // for the given root hash
+    assert_eq!(&state_root_hash, &root_hash.unwrap());
+}
+
+```
