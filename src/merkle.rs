@@ -8,15 +8,13 @@ use crate::store::{
 // obtain the merkle path for a leaf
 pub fn merkle_proof(db: &mut dyn Database, key: Vec<u8>, trie_root: Node) -> Option<MerkleProof> {
     assert_eq!(key.len(), 256);
-    let mut idx: usize = 0;
     let mut proof: MerkleProof = MerkleProof { nodes: Vec::new() };
     let mut current_node = trie_root.clone();
-    let mut digit: u8 = key[idx];
     loop {
         match &mut current_node {
             Node::Root(root) => {
                 proof.nodes.push((false, Node::Root(root.clone())));
-                if digit == 0 {
+                if key[0] == 0 {
                     let left_child = db.get(&root.left.clone().unwrap()).unwrap();
                     current_node = left_child.clone();
                     proof.nodes.push((false, left_child.clone()));
@@ -27,8 +25,7 @@ pub fn merkle_proof(db: &mut dyn Database, key: Vec<u8>, trie_root: Node) -> Opt
                 }
             }
             Node::Branch(branch) => {
-                idx += branch.key.len();
-                digit = key[idx];
+                let digit = key[branch.key[0] as usize];
                 if digit == 0 {
                     current_node = db.get(&branch.left.clone().unwrap()).unwrap().clone();
                     proof.nodes.push((false, current_node.clone()));
@@ -129,12 +126,17 @@ pub mod tests {
         let proof = merkle_proof(&mut db, leaf_2.key, Node::Root(new_root.clone()));
         // verify merkle proof
         let inner_proof = proof.unwrap().nodes;
+        assert_eq!(
+            inner_proof.last().unwrap().clone().1.unwrap_as_leaf().hash,
+            leaf_2.hash
+        );
         verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
 
         let proof = merkle_proof(&mut db, leaf_1.key, Node::Root(new_root.clone()));
         let inner_proof = proof.unwrap().nodes;
         verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
     }
+
     #[test]
     fn simulate_insert_flow() {
         #[cfg(not(feature = "sqlite"))]

@@ -9,6 +9,7 @@ pub mod store;
 pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, mut current_node: Node) -> bool {
     // start with the root, if the child at the idx is a branch, check the prefix.
     // if the child at the idx is a leaf, compare keys
+    #[allow(unused_assignments)]
     let mut result: bool = false;
     loop {
         match &current_node {
@@ -25,7 +26,7 @@ pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, mut current_node: 
             }
             Node::Leaf(leaf) => {
                 println!("Found leaf: {:?}", &leaf);
-                assert_eq!(leaf.key, leaf_expected.key);
+                assert_eq!(leaf.hash, leaf_expected.hash);
                 result = true;
                 break;
             }
