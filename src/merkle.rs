@@ -15,7 +15,6 @@ pub fn merkle_proof(db: &mut dyn Database, key: Vec<u8>, trie_root: Node) -> Opt
     loop {
         match &mut current_node {
             Node::Root(root) => {
-                println!("Root: {:?}", &root);
                 proof.nodes.push((false, Node::Root(root.clone())));
                 if digit == 0 {
                     let left_child = db.get(&root.left.clone().unwrap()).unwrap();
@@ -122,12 +121,12 @@ pub mod tests {
             leaf_2_key.push(1);
         }
         let mut leaf_2: Leaf = Leaf::empty(leaf_2_key);
+        leaf_2.hash();
         let root: Root = Root::empty();
         let root_node: Node = Node::Root(root);
         let new_root: Root = insert_leaf(&mut db, &mut leaf_1, root_node);
         let new_root: Root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
         let proof = merkle_proof(&mut db, leaf_2.key, Node::Root(new_root.clone()));
-
         // verify merkle proof
         let inner_proof = proof.unwrap().nodes;
         verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
