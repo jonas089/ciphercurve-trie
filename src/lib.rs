@@ -60,13 +60,6 @@ pub fn insert_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) 
     new_root
 }
 
-pub fn update_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) -> Root {
-    let modified_nodes = traverse_trie(db, new_leaf, root_node.clone(), true);
-    let mut new_root = update_modified_leafs(db, modified_nodes, root_node.unwrap_as_root());
-    new_root.hash_and_store(db);
-    new_root
-}
-
 fn traverse_trie(
     db: &mut dyn Database,
     new_leaf: &mut Leaf,
