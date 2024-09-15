@@ -20,16 +20,17 @@ cargo test --features sqlite test_sql_db
 
 ## API
 
-This library primarily exposes two entry points, one to insert a new `Leaf` into a `Trie` and one to update an existing `Leaf` in the `Trie`:
+This library primarily exposes two entry points, one to insert a new `Leaf` into a `Trie`:
 
 ```rust
-pub fn insert_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) -> Root {
+pub fn insert_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) -> Root {
     assert_eq!(new_leaf.key.len(), 256);
-    let (modified_nodes, new_root) = traverse_trie(db, new_leaf, root_node, false);
-    let mut new_root = update_modified_leafs(db, modified_nodes, new_root);
+    let modified_nodes = traverse_trie(db, new_leaf, root_node.clone(), false);
+    let mut new_root = update_modified_leafs(db, modified_nodes, root_node.unwrap_as_root());
     new_root.hash_and_store(db);
     new_root
 }
+```
 
 pub fn update_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) -> Root {
     let (modified_nodes, new_root) = traverse_trie(db, new_leaf, root_node, true);
