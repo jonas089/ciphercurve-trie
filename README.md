@@ -32,13 +32,6 @@ pub fn insert_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) 
 }
 ```
 
-pub fn update_leaf(db: &mut InMemoryDB, new_leaf: &mut Leaf, root_node: Node) -> Root {
-    let (modified_nodes, new_root) = traverse_trie(db, new_leaf, root_node, true);
-    let mut new_root = update_modified_leafs(db, modified_nodes, new_root);
-    new_root.hash_and_store(db);
-    new_root
-}
-```
 
 Additionally, there are two public functions to generate and verify `Merkle Proofs`:
 
