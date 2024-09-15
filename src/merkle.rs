@@ -38,7 +38,7 @@ pub fn merkle_proof(db: &mut dyn Database, key: Vec<u8>, trie_root: Node) -> Opt
                     proof.nodes.push((true, current_node.clone()));
                 }
             }
-            Node::Leaf(leaf) => return Some(proof),
+            Node::Leaf(_) => return Some(proof),
         }
     }
 }

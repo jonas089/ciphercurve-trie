@@ -1,5 +1,3 @@
-use std::borrow::BorrowMut;
-
 use store::{
     db::Database,
     types::{Branch, Key, Leaf, Node, Root},
@@ -18,24 +16,27 @@ pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, mut current_node: 
         match &current_node {
             Node::Branch(branch) => {
                 let branch_prefix = &branch.key;
-                if branch_prefix.as_slice() == &leaf_expected.key[0..branch_prefix.len()] {
-                    idx += branch_prefix.len();
-                    let child_idx = &leaf_expected.key[branch_prefix.len()];
-                    if *child_idx == 0 {
-                        current_node = db.get(&branch.left.clone().unwrap()).unwrap().clone();
-                    } else {
-                        current_node = db.get(&branch.right.clone().unwrap()).unwrap().clone();
-                    }
+                //if branch_prefix.as_slice() == &leaf_expected.key[0..branch_prefix.len()] {
+                let neq_idx = &branch_prefix[0];
+                let child_idx = leaf_expected.key[*neq_idx as usize];
+                idx += branch_prefix.len();
+                println!("Branch key: {:?}", &branch.key);
+                if child_idx == 0 {
+                    current_node = db.get(&branch.left.clone().unwrap()).unwrap().clone();
                 } else {
+                    current_node = db.get(&branch.right.clone().unwrap()).unwrap().clone();
+                }
+                /*} else {
                     panic!(
                         "Branch prefix mismatch: {:?} ||||||| {:?}",
-                        &leaf_expected.key[idx..branch_prefix.len()],
-                        &branch_prefix.as_slice()
+                        &leaf_expected.key[0..branch_prefix.len()],
+                        &branch_prefix.as_slice(),
                     )
-                }
+                }*/
             }
             Node::Leaf(leaf) => {
                 println!("Found leaf: {:?}", &leaf);
+                assert_eq!(leaf.key, leaf_expected.key);
                 result = true;
                 break;
             }
@@ -90,7 +91,7 @@ fn traverse_trie(
     let mut current_node_pos: u8 = 0;
     let mut idx = 0;
     while idx < new_leaf.key.len() {
-        let digit: u8 = new_leaf.key[idx]; // 0 or 1
+        let digit: u8 = new_leaf.key[idx];
         assert!(digit == 0 || digit == 1);
         match &mut current_node {
             Node::Root(root) => {
@@ -133,8 +134,8 @@ fn traverse_trie(
                 }
             }
             Node::Branch(branch) => {
-                idx += branch.key.len();
-                if digit == 0 {
+                idx = branch.key[0] as usize;
+                if new_leaf.key[idx] == 0 {
                     match branch.left.clone() {
                         Some(node_hash) => {
                             modified_nodes.push((current_node_pos, Node::Branch(branch.clone())));
@@ -142,10 +143,7 @@ fn traverse_trie(
                             current_node_pos = 0;
                         }
                         None => {
-                            new_leaf.store(db);
-                            branch.left = Some(new_leaf.hash.clone().unwrap());
-                            modified_nodes.push((current_node_pos, Node::Branch(branch.clone())));
-                            break;
+                            panic!("A branch must have 2 children")
                         }
                     }
                 } else {
@@ -156,27 +154,24 @@ fn traverse_trie(
                             current_node_pos = 1;
                         }
                         None => {
-                            new_leaf.store(db);
-                            branch.left = Some(new_leaf.hash.clone().unwrap());
-                            modified_nodes.push((current_node_pos, Node::Branch(branch.clone())));
-                            break;
+                            panic!("A branch must have 2 children")
                         }
                     }
                 }
             }
             Node::Leaf(leaf) => {
                 if !update {
-                    let neq_idx = find_key_idx_not_eq(&new_leaf.key[idx..].to_vec(), &leaf.key)
+                    let neq_idx = find_key_idx_not_eq(&new_leaf.key, &leaf.key)
                         .expect("Can't insert duplicate Leaf");
                     let new_leaf_pos: u8 = new_leaf.key[neq_idx];
                     // there might be an inefficiency to this?
                     // we store leaf again with just a different prefix
                     // maybe don't do this in a future release...
-                    leaf.prefix = Some(leaf.key[neq_idx..].to_vec());
-                    new_leaf.prefix = Some(new_leaf.key[neq_idx..].to_vec());
+                    //leaf.prefix = Some(leaf.key[neq_idx..].to_vec());
+                    //new_leaf.prefix = Some(new_leaf.key[neq_idx..].to_vec());
                     leaf.hash_and_store(db);
                     new_leaf.hash_and_store(db);
-                    let mut new_branch: Branch = Branch::empty(new_leaf.key[..neq_idx].to_vec());
+                    let mut new_branch: Branch = Branch::empty(vec![neq_idx as u8]);
                     if new_leaf_pos == 0 {
                         new_branch.left = new_leaf.hash.clone();
                         new_branch.right = leaf.hash.clone();
@@ -205,12 +200,7 @@ fn update_modified_leafs(
     let modified_clone = modified_nodes.clone();
     for (cnt, chunk) in modified_clone.chunks(2).enumerate() {
         if let [_, _] = chunk {
-            let mut idx = 0;
-            if cnt == 0 {
-                idx = 1;
-            } else {
-                idx = cnt + 1;
-            }
+            let idx = cnt * 2 + 1;
             // todo: re-hash child and insert it
             // todo: hash child, insert it's hash into the parent and re-hash the parent
             // insert both child and parent into the DB
@@ -252,9 +242,10 @@ fn update_modified_leafs(
                             parent_branch.right = Some(branch.hash.clone().unwrap());
                         }
                         parent_branch.hash_and_store(db);
+                        //panic!("Parent branch involved");
                         Some(parent_branch)
                     }
-                    _ => panic!("This should never happen"),
+                    _ => None,
                 },
                 _ => {
                     panic!("This should never happen")
@@ -267,7 +258,6 @@ fn update_modified_leafs(
                 None => {}
             }
         } else {
-            println!("LEFTOVER CHUNK IS BEING IGNORED: {:?}", chunk);
             let mut root = modified_nodes[modified_nodes.len() - 1]
                 .1
                 .clone()
@@ -293,6 +283,13 @@ fn find_key_idx_not_eq(k1: &Key, k2: &Key) -> Option<usize> {
         }
     }
     None
+}
+
+#[test]
+fn test_find_key_neq() {
+    let x = vec![0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1];
+    let y = vec![0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1];
+    assert_eq!(find_key_idx_not_eq(&x, &y).unwrap(), 9);
 }
 
 #[cfg(test)]
@@ -352,7 +349,7 @@ mod tests {
     #[test]
     fn test_many_leafs() {
         let transaction_count: u32 = std::env::var("INSERT_TRANSACTION_COUNT")
-            .unwrap_or_else(|_| "100".to_string())
+            .unwrap_or_else(|_| "1000".to_string())
             .parse::<u32>()
             .expect("Invalid argument STRESS_TEST_TRANSACTION_COUNT");
         let mut transactions: Vec<Leaf> = Vec::new();
