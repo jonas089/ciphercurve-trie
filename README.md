@@ -1,8 +1,4 @@
 # Merkle Binary Patricia Trie for immutable Blockchain State
-
-:warning: This Library has not been audited, use at own Risk! :warning:
-:warning: I found several breaking bugs that I am working on :warning:
-:warning: Status 15.09.2024: a lot of work tbd :warning:
 ![benchmark](https://github.com/jonas089/jonas089-trie/blob/master/resources/simple-bench.png)
 
 ## Implementation Details
