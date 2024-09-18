@@ -34,7 +34,7 @@ pub mod sql {
     }
     impl TrieDB {
         pub fn setup(&self) {
-            let conn = Connection::open(&self.path).unwrap();
+            let conn = Connection::open(&self.path).expect("Unhandled Error: SQL Connection");
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS nodes (
                           key    BLOB PRIMARY KEY,
@@ -42,23 +42,23 @@ pub mod sql {
                           )",
                 [],
             )
-            .unwrap();
+            .expect("Unhandled Error: SQL Insert");
         }
     }
     impl Database for TrieDB {
         fn insert(&mut self, key: &[u8], node: Node) {
-            let conn = Connection::open(&self.path).unwrap();
+            let conn = Connection::open(&self.path).expect("Unhandled Error: SQL Connection");
             conn.execute(
                 "INSERT OR REPLACE INTO nodes (key, node) VALUES (?1, ?2)",
                 params![key, bincode::serialize(&node).unwrap()],
             )
-            .unwrap();
+            .expect("Unhandled Error: SQL Insert");
         }
         fn get(&mut self, key: &[u8]) -> Option<&mut Node> {
             let conn = Connection::open(&self.path).unwrap();
             let mut stmt = conn
                 .prepare("SELECT node FROM nodes WHERE key = ?1 LIMIT 1")
-                .unwrap();
+                .expect("Unhandled Error: SQL Connection");
 
             let node_serialized: Option<Vec<u8>> = stmt
                 .query_row([&key], |row| {

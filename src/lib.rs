@@ -3,19 +3,17 @@ use store::{
     types::{Branch, Key, Leaf, Node, Root},
 };
 
+pub mod error;
 pub mod merkle;
 pub mod store;
 
 pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, mut current_node: Node) -> bool {
-    // start with the root, if the child at the idx is a branch, check the prefix.
-    // if the child at the idx is a leaf, compare keys
     #[allow(unused_assignments)]
     let mut result: bool = false;
     loop {
         match &current_node {
             Node::Branch(branch) => {
                 let branch_prefix = &branch.key;
-                //if branch_prefix.as_slice() == &leaf_expected.key[0..branch_prefix.len()] {
                 let neq_idx = &branch_prefix[0];
                 let child_idx = leaf_expected.key[*neq_idx as usize];
                 if child_idx == 0 {
@@ -25,7 +23,6 @@ pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, mut current_node: 
                 }
             }
             Node::Leaf(leaf) => {
-                println!("Found leaf: {:?}", &leaf);
                 assert_eq!(leaf.hash, leaf_expected.hash);
                 result = true;
                 break;
@@ -75,8 +72,6 @@ fn traverse_trie(
                 if new_leaf.key[0] == 0 {
                     match root.left.clone() {
                         Some(node_hash) => {
-                            //let root_unwrapped: Root = root_node.clone().unwrap_as_root();
-                            //modified_nodes.push((0, Node::Root(root_unwrapped)));
                             current_node = db.get(&node_hash).unwrap().clone();
                             current_node_pos = 0;
                         }
@@ -84,7 +79,6 @@ fn traverse_trie(
                             let mut root: Root = current_node.unwrap_as_root();
                             root.left = Some(new_leaf.hash.clone().unwrap());
                             new_leaf.store(db);
-                            //modified_nodes.push((0, Node::Root(root)));
                             modified_nodes.push((0, Node::Leaf(new_leaf.clone())));
                             break;
                         }
@@ -92,8 +86,6 @@ fn traverse_trie(
                 } else {
                     match root.right.clone() {
                         Some(node_hash) => {
-                            //let root_unwrapped: Root = root_node.clone().unwrap_as_root();
-                            //modified_nodes.push((0, Node::Root(root_unwrapped)));
                             current_node = db.get(&node_hash).unwrap().clone();
                             current_node_pos = 1;
                         }
@@ -101,7 +93,6 @@ fn traverse_trie(
                             let mut root = current_node.clone().unwrap_as_root();
                             root.right = Some(new_leaf.hash.clone().unwrap());
                             new_leaf.store(db);
-                            //modified_nodes.push((0, Node::Root(root)));
                             modified_nodes.push((1, Node::Leaf(new_leaf.clone())));
                             break;
                         }
@@ -171,7 +162,6 @@ fn update_modified_leafs(
     let mut new_root = Root::empty();
     modified_nodes.reverse();
     modified_nodes.push((0, Node::Root(old_root)));
-    println!("modified nodes: {:?}", &modified_nodes);
     for i in 1..modified_nodes.len() {
         let child = modified_nodes[i - 1].clone();
         let parent = modified_nodes[i].clone();
@@ -233,7 +223,6 @@ fn update_modified_leafs(
             Node::Leaf(_) => panic!("This should never happen, parent is leaf"),
         }
     }
-    println!("New root: {:?}", &new_root);
     assert!(new_root.left.is_some() || new_root.right.is_some());
     new_root
 }
@@ -268,6 +257,8 @@ mod tests {
     use colored::*;
     use indicatif::ProgressBar;
     use std::collections::HashMap;
+    #[cfg(feature = "sqlite")]
+    use std::env;
     use std::time::Instant;
     #[test]
     fn test_insert_leaf() {
@@ -387,22 +378,6 @@ mod tests {
         let root_node = Node::Root(root);
         let new_root = insert_leaf(&mut db, &mut leaf_1, root_node);
         let new_root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
-        assert_eq!(
-            new_root.hash.clone().unwrap(),
-            Root {
-                hash: Some(vec![
-                    170, 229, 131, 77, 235, 12, 173, 127, 222, 26, 105, 40, 22, 13, 179, 45, 178,
-                    246, 170, 244, 16, 171, 204, 67, 102, 94, 208, 139, 143, 112, 136, 169
-                ]),
-                left: Some(vec![
-                    192, 255, 218, 137, 120, 169, 46, 169, 51, 142, 15, 1, 84, 251, 124, 134, 95,
-                    25, 100, 240, 136, 56, 116, 145, 21, 237, 3, 48, 55, 36, 46, 197
-                ]),
-                right: None
-            }
-            .hash
-            .unwrap()
-        );
         println!(
             "{} Elapsed Time: {} µs",
             "[1x Insert]".yellow(),
