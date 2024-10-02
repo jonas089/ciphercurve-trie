@@ -1,6 +1,9 @@
 # Merkle Binary Patricia Trie for immutable Blockchain State
 ![benchmark](https://github.com/jonas089/jonas089-trie/blob/master/resources/simple-bench.png)
 
+> [!WARNING]  
+> This is a research project and hasn't been audited. Use in production at your own risk.
+
 ## Implementation Details
 
 Historical state is preserved for each `root hash`, one can query the `db` for a Root and generate `Merkle Proofs` for `Leaf`s in the `Trie`.
