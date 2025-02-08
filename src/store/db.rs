@@ -1,27 +1,9 @@
 use crate::store::types::Node;
-use std::collections::HashMap;
-
 pub trait Database {
     fn insert(&mut self, key: &[u8], node: Node);
     fn get(&mut self, key: &[u8]) -> Option<&mut Node>;
 }
 
-#[cfg(not(feature = "sqlite"))]
-#[derive(Debug)]
-pub struct TrieDB {
-    pub nodes: HashMap<Vec<u8>, Node>,
-}
-#[cfg(not(feature = "sqlite"))]
-impl Database for TrieDB {
-    fn insert(&mut self, key: &[u8], node: Node) {
-        self.nodes.insert(key.to_vec(), node);
-    }
-    fn get(&mut self, key: &[u8]) -> Option<&mut Node> {
-        self.nodes.get_mut(key)
-    }
-}
-
-#[cfg(feature = "sqlite")]
 pub mod sql {
     extern crate rusqlite;
     use super::Database;

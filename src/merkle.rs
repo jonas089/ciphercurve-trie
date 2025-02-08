@@ -83,33 +83,24 @@ pub struct MerkleProof {
 
 #[cfg(test)]
 pub mod tests {
-    use std::{collections::HashMap, env, time::Instant};
-
-    #[cfg(feature = "sqlite")]
     use crate::store::db::sql::TrieDB;
-    #[cfg(not(feature = "sqlite"))]
-    use crate::store::db::TrieDB;
     use crate::{
         insert_leaf,
         merkle::verify_merkle_proof,
         store::types::{Hashable, Key, Leaf, Node, NodeHash, Root},
     };
+    use std::{env, time::Instant};
 
     use super::merkle_proof;
     use colored::*;
 
     #[test]
     fn test_merkle_proof() {
-        #[cfg(not(feature = "sqlite"))]
-        let mut db = TrieDB {
-            nodes: HashMap::new(),
-        };
-
-        #[cfg(feature = "sqlite")]
         let mut db = TrieDB {
             path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),
             cache: None,
         };
+        db.setup();
         let mut leaf_1: Leaf = Leaf::empty(vec![0u8; 256]);
         leaf_1.hash();
 
@@ -139,16 +130,11 @@ pub mod tests {
 
     #[test]
     fn simulate_insert_flow() {
-        #[cfg(not(feature = "sqlite"))]
-        let mut db = TrieDB {
-            nodes: HashMap::new(),
-        };
-
-        #[cfg(feature = "sqlite")]
         let mut db = TrieDB {
             path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),
             cache: None,
         };
+        db.setup();
         let root: Root = Root::empty();
         let root_node: Node = Node::Root(root);
         let mut current_root = root_node.clone();
