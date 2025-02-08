@@ -5,8 +5,9 @@ use crate::store::{
     db::Database,
     types::{Hashable, Node, NodeHash, RootHash},
 };
+use anyhow::{bail, Result};
 // obtain the merkle path for a leaf
-pub fn merkle_proof(db: &mut dyn Database, key: Vec<u8>, trie_root: Node) -> Option<MerkleProof> {
+pub fn merkle_proof(db: &mut dyn Database, key: Vec<u8>, trie_root: Node) -> Result<MerkleProof> {
     assert_eq!(key.len(), 256);
     let mut proof: MerkleProof = MerkleProof { nodes: Vec::new() };
     let mut current_node = trie_root.clone();
@@ -34,18 +35,21 @@ pub fn merkle_proof(db: &mut dyn Database, key: Vec<u8>, trie_root: Node) -> Opt
                     proof.nodes.push((true, current_node.clone()));
                 }
             }
-            Node::Leaf(_) => return Some(proof),
+            Node::Leaf(_) => return Ok(proof),
         }
     }
 }
 
-pub fn verify_merkle_proof(mut inner_proof: Vec<(bool, Node)>, state_root_hash: RootHash) {
+pub fn verify_merkle_proof(
+    mut inner_proof: Vec<(bool, Node)>,
+    state_root_hash: RootHash,
+) -> Result<()> {
     inner_proof.reverse();
     let mut current_hash: Option<(bool, NodeHash)> = None;
     let mut root_hash: Option<RootHash> = None;
     for (idx, node) in inner_proof.into_iter().enumerate() {
         if idx == 0 {
-            let leaf = node.1.unwrap_as_leaf();
+            let leaf = node.1.unwrap_as_leaf()?;
             current_hash = Some((node.0, leaf.hash.unwrap()));
         } else {
             match node.1 {
@@ -67,13 +71,14 @@ pub fn verify_merkle_proof(mut inner_proof: Vec<(bool, Node)>, state_root_hash: 
                     branch.hash();
                     current_hash = Some((node.0, branch.hash.unwrap()));
                 }
-                Node::Leaf(_) => panic!("Invalid Node variant in Merkle Proof"),
+                Node::Leaf(_) => bail!("Invalid Node variant in Merkle Proof"),
             }
         }
     }
     // if this assertion passes, the merkle proof is valid
     // for the given root hash
     assert_eq!(&state_root_hash, &root_hash.unwrap());
+    Ok(())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -112,20 +117,27 @@ pub mod tests {
         leaf_2.hash();
         let root: Root = Root::empty();
         let root_node: Node = Node::Root(root);
-        let new_root: Root = insert_leaf(&mut db, &mut leaf_1, root_node);
-        let new_root: Root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
+        let new_root: Root = insert_leaf(&mut db, &mut leaf_1, root_node).unwrap();
+        let new_root: Root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root)).unwrap();
         let proof = merkle_proof(&mut db, leaf_2.key, Node::Root(new_root.clone()));
         // verify merkle proof
         let inner_proof = proof.unwrap().nodes;
         assert_eq!(
-            inner_proof.last().unwrap().clone().1.unwrap_as_leaf().hash,
+            inner_proof
+                .last()
+                .unwrap()
+                .clone()
+                .1
+                .unwrap_as_leaf()
+                .unwrap()
+                .hash,
             leaf_2.hash
         );
-        verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+        verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap()).unwrap();
 
         let proof = merkle_proof(&mut db, leaf_1.key, Node::Root(new_root.clone()));
         let inner_proof = proof.unwrap().nodes;
-        verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+        verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap()).unwrap();
     }
 
     #[test]
@@ -154,10 +166,11 @@ pub mod tests {
         let start_time = Instant::now();
         for mut leaf in leafs {
             leaf.hash();
-            let new_root: Root = insert_leaf(&mut db, &mut leaf.clone(), current_root.clone());
+            let new_root: Root =
+                insert_leaf(&mut db, &mut leaf.clone(), current_root.clone()).unwrap();
             let proof = merkle_proof(&mut db, leaf.key.clone(), Node::Root(new_root.clone()));
             let inner_proof = proof.unwrap().nodes;
-            verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+            verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap()).unwrap();
 
             #[cfg(feature = "stress-test")]
             for key in leaf_keys.clone() {
@@ -169,7 +182,7 @@ pub mod tests {
             {
                 let proof = merkle_proof(&mut db, leaf.key.clone(), Node::Root(new_root.clone()));
                 let inner_proof = proof.unwrap().nodes;
-                verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+                verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap()).unwrap();
             }
             leaf_keys.push(leaf.key.clone());
             current_root = Node::Root(new_root.clone());

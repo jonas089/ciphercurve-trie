@@ -1,4 +1,5 @@
 use super::db::Database;
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -15,22 +16,22 @@ pub enum Node {
 }
 
 impl Node {
-    pub fn unwrap_as_root(self) -> Root {
+    pub fn unwrap_as_root(self) -> Result<Root> {
         match self {
-            Node::Root(root) => root,
-            _ => panic!("Failed to unwrap as Root"),
+            Node::Root(root) => Ok(root),
+            _ => bail!("Failed to unwrap as Root"),
         }
     }
-    pub fn unwrap_as_branch(self) -> Branch {
+    pub fn unwrap_as_branch(self) -> Result<Branch> {
         match self {
-            Node::Branch(branch) => branch,
-            _ => panic!("Failed to unwrap as Branch"),
+            Node::Branch(branch) => Ok(branch),
+            _ => bail!("Failed to unwrap as Branch"),
         }
     }
-    pub fn unwrap_as_leaf(self) -> Leaf {
+    pub fn unwrap_as_leaf(self) -> Result<Leaf> {
         match self {
-            Node::Leaf(leaf) => leaf,
-            _ => panic!("Failed to unwrap as Leaf"),
+            Node::Leaf(leaf) => Ok(leaf),
+            _ => bail!("Failed to unwrap as Leaf"),
         }
     }
 }

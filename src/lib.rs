@@ -6,8 +6,13 @@ use store::{
 pub mod error;
 pub mod merkle;
 pub mod store;
+use anyhow::{bail, Result};
 
-pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, mut current_node: Node) -> bool {
+pub fn check_leaf(
+    db: &mut dyn Database,
+    leaf_expected: &Leaf,
+    mut current_node: Node,
+) -> Result<bool> {
     #[allow(unused_assignments)]
     let mut result: bool = false;
     loop {
@@ -33,28 +38,32 @@ pub fn check_leaf(db: &mut dyn Database, leaf_expected: Leaf, mut current_node: 
                         Some(node) => {
                             current_node = db.get(&node).unwrap().clone();
                         }
-                        None => panic!("Root does not have path: {:?}", &root),
+                        None => bail!("Root does not have path: {:?}", &root),
                     }
                 } else {
                     match &root.right {
                         Some(node) => {
                             current_node = db.get(&node).unwrap().clone();
                         }
-                        None => panic!("Root does not have path"),
+                        None => bail!("Root does not have path"),
                     }
                 }
             }
         }
     }
-    result
+    Ok(result)
 }
 
-pub fn insert_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) -> Root {
+pub fn insert_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) -> Result<Root> {
     assert_eq!(new_leaf.key.len(), 256);
-    let modified_nodes = traverse_trie(db, new_leaf, root_node.clone(), false);
-    let mut new_root = update_modified_leafs(db, modified_nodes, root_node.unwrap_as_root());
+    // don't insert if a leaf already exists at the given key
+    if check_leaf(db, &new_leaf, root_node.clone())? {
+        bail!("Leaf already exists!");
+    }
+    let modified_nodes = traverse_trie(db, new_leaf, root_node.clone(), false)?;
+    let mut new_root = update_modified_leafs(db, modified_nodes, root_node.unwrap_as_root()?)?;
     new_root.hash_and_store(db);
-    new_root
+    Ok(new_root)
 }
 
 fn traverse_trie(
@@ -62,7 +71,7 @@ fn traverse_trie(
     new_leaf: &mut Leaf,
     root_node: Node,
     update: bool,
-) -> Vec<(u8, Node)> {
+) -> Result<Vec<(u8, Node)>> {
     let mut modified_nodes: Vec<(u8, Node)> = Vec::new();
     let mut current_node: Node = root_node.clone();
     let mut current_node_pos: u8 = 0;
@@ -76,7 +85,7 @@ fn traverse_trie(
                             current_node_pos = 0;
                         }
                         None => {
-                            let mut root: Root = current_node.unwrap_as_root();
+                            let mut root: Root = current_node.unwrap_as_root()?;
                             root.left = Some(new_leaf.hash.clone().unwrap());
                             new_leaf.store(db);
                             modified_nodes.push((0, Node::Leaf(new_leaf.clone())));
@@ -90,7 +99,7 @@ fn traverse_trie(
                             current_node_pos = 1;
                         }
                         None => {
-                            let mut root = current_node.clone().unwrap_as_root();
+                            let mut root = current_node.clone().unwrap_as_root()?;
                             root.right = Some(new_leaf.hash.clone().unwrap());
                             new_leaf.store(db);
                             modified_nodes.push((1, Node::Leaf(new_leaf.clone())));
@@ -108,7 +117,7 @@ fn traverse_trie(
                             current_node_pos = 0;
                         }
                         None => {
-                            panic!("A branch must have 2 children")
+                            bail!("A branch must have 2 children")
                         }
                     }
                 } else {
@@ -119,7 +128,7 @@ fn traverse_trie(
                             current_node_pos = 1;
                         }
                         None => {
-                            panic!("A branch must have 2 children")
+                            bail!("A branch must have 2 children")
                         }
                     }
                 }
@@ -131,7 +140,7 @@ fn traverse_trie(
                     let new_leaf_pos: u8 = new_leaf.key[neq_idx];
                     match new_leaf.hash {
                         Some(_) => {}
-                        None => panic!("Leaf was not hashed!"),
+                        None => bail!("Leaf was not hashed!"),
                     }
                     new_leaf.store(db);
                     let mut new_branch: Branch = Branch::empty(vec![neq_idx as u8]);
@@ -151,14 +160,14 @@ fn traverse_trie(
             }
         }
     }
-    modified_nodes
+    Ok(modified_nodes)
 }
 
 fn update_modified_leafs(
     db: &mut dyn Database,
     mut modified_nodes: Vec<(u8, Node)>,
     old_root: Root,
-) -> Root {
+) -> Result<Root> {
     let mut new_root = Root::empty();
     modified_nodes.reverse();
     modified_nodes.push((0, Node::Root(old_root)));
@@ -193,7 +202,7 @@ fn update_modified_leafs(
                         new_root = root;
                     }
                 }
-                _ => panic!("This should never happen, child is root"),
+                _ => bail!("This should never happen, child is root"),
             },
             Node::Branch(mut branch) => match &child.1 {
                 Node::Branch(child_branch) => {
@@ -218,13 +227,13 @@ fn update_modified_leafs(
                         modified_nodes[i] = (parent.0, Node::Branch(branch.clone()));
                     }
                 }
-                _ => panic!("This should never happen, child is leaf"),
+                _ => bail!("This should never happen, child is leaf"),
             },
-            Node::Leaf(_) => panic!("This should never happen, parent is leaf"),
+            Node::Leaf(_) => bail!("This should never happen, parent is leaf"),
         }
     }
     assert!(new_root.left.is_some() || new_root.right.is_some());
-    new_root
+    Ok(new_root)
 }
 
 fn find_key_idx_not_eq(k1: &Key, k2: &Key) -> Option<usize> {
@@ -280,7 +289,7 @@ mod tests {
         leaf_3.hash();
         let root: Root = Root::empty();
         let root_node = Node::Root(root);
-        let new_root = insert_leaf(&mut db, &mut leaf_1, root_node.clone());
+        let new_root = insert_leaf(&mut db, &mut leaf_1, root_node.clone()).unwrap();
         let _ = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
 
         println!(
@@ -312,12 +321,8 @@ mod tests {
         let progress_bar: ProgressBar = ProgressBar::new(transaction_count as u64);
         for mut leaf in transactions {
             leaf.hash();
-            let new_root = insert_leaf(&mut db, &mut leaf, root_node.clone());
-            assert!(check_leaf(
-                &mut db,
-                leaf.clone(),
-                Node::Root(new_root.clone())
-            ));
+            let new_root = insert_leaf(&mut db, &mut leaf, root_node.clone()).unwrap();
+            assert!(check_leaf(&mut db, &leaf.clone(), Node::Root(new_root.clone())).unwrap());
             root_node = Node::Root(new_root.clone());
             progress_bar.inc(1);
         }
@@ -346,7 +351,6 @@ mod tests {
             leaf_2_key.push(1);
         }
         let mut leaf_2: Leaf = Leaf::empty(leaf_2_key);
-
         let mut leaf_3_key: Vec<u8> = vec![0; 253];
         for _i in 0..3 {
             leaf_3_key.push(0);
@@ -358,7 +362,7 @@ mod tests {
         let root: Root = Root::empty();
         let root_node = Node::Root(root);
         let new_root = insert_leaf(&mut db, &mut leaf_1, root_node);
-        let new_root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
+        let new_root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root.unwrap()));
         println!(
             "{} Elapsed Time: {} µs",
             "[1x Insert]".yellow(),
@@ -366,11 +370,11 @@ mod tests {
         );
         let mut leaf_1: Leaf = Leaf::empty(vec![1u8; 256]);
         leaf_1.hash();
-        let root: Root = new_root;
+        let root: Root = new_root.unwrap();
         let root_node: Node = Node::Root(root);
-        let new_root: Root = insert_leaf(&mut db, &mut leaf_1, root_node);
+        let new_root: Root = insert_leaf(&mut db, &mut leaf_1, root_node).unwrap();
         let proof = merkle_proof(&mut db, leaf_1.key, Node::Root(new_root.clone()));
         let inner_proof = proof.unwrap().nodes;
-        verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap());
+        verify_merkle_proof(inner_proof, new_root.hash.clone().unwrap()).unwrap();
     }
 }
