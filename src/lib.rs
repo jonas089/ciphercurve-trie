@@ -8,11 +8,7 @@ pub mod merkle;
 pub mod store;
 use anyhow::{bail, Result};
 
-pub fn check_leaf(
-    db: &mut dyn Database,
-    leaf_expected: &Leaf,
-    mut current_node: Node,
-) -> Result<bool> {
+pub fn check_leaf(db: &mut dyn Database, leaf_expected: &Leaf, mut current_node: Node) -> bool {
     #[allow(unused_assignments)]
     let mut result: bool = false;
     loop {
@@ -28,8 +24,11 @@ pub fn check_leaf(
                 }
             }
             Node::Leaf(leaf) => {
-                assert_eq!(leaf.hash, leaf_expected.hash);
-                result = true;
+                if leaf.hash == leaf_expected.hash {
+                    result = true;
+                } else {
+                    result = false;
+                }
                 break;
             }
             Node::Root(root) => {
@@ -38,26 +37,32 @@ pub fn check_leaf(
                         Some(node) => {
                             current_node = db.get(&node).unwrap().clone();
                         }
-                        None => bail!("Root does not have path: {:?}", &root),
+                        None => {
+                            result = false;
+                            break;
+                        }
                     }
                 } else {
                     match &root.right {
                         Some(node) => {
                             current_node = db.get(&node).unwrap().clone();
                         }
-                        None => bail!("Root does not have path"),
+                        None => {
+                            result = false;
+                            break;
+                        }
                     }
                 }
             }
         }
     }
-    Ok(result)
+    result
 }
 
 pub fn insert_leaf(db: &mut dyn Database, new_leaf: &mut Leaf, root_node: Node) -> Result<Root> {
     assert_eq!(new_leaf.key.len(), 256);
     // don't insert if a leaf already exists at the given key
-    if check_leaf(db, &new_leaf, root_node.clone())? {
+    if check_leaf(db, &new_leaf, root_node.clone()) {
         bail!("Leaf already exists!");
     }
     let modified_nodes = traverse_trie(db, new_leaf, root_node.clone(), false)?;
@@ -289,8 +294,11 @@ mod tests {
         leaf_3.hash();
         let root: Root = Root::empty();
         let root_node = Node::Root(root);
-        let new_root = insert_leaf(&mut db, &mut leaf_1, root_node.clone()).unwrap();
-        let _ = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root));
+        let mut new_root = insert_leaf(&mut db, &mut leaf_1, root_node.clone()).unwrap();
+        new_root = insert_leaf(&mut db, &mut leaf_2, Node::Root(new_root)).unwrap();
+
+        assert!(check_leaf(&mut db, &leaf_1, Node::Root(new_root.clone())));
+        assert!(check_leaf(&mut db, &leaf_2, Node::Root(new_root.clone())));
 
         println!(
             "{} Elapsed Time: {} µs",
@@ -322,7 +330,11 @@ mod tests {
         for mut leaf in transactions {
             leaf.hash();
             let new_root = insert_leaf(&mut db, &mut leaf, root_node.clone()).unwrap();
-            assert!(check_leaf(&mut db, &leaf.clone(), Node::Root(new_root.clone())).unwrap());
+            assert!(check_leaf(
+                &mut db,
+                &leaf.clone(),
+                Node::Root(new_root.clone())
+            ));
             root_node = Node::Root(new_root.clone());
             progress_bar.inc(1);
         }
