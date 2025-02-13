@@ -150,13 +150,13 @@ pub mod tests {
         let root: Root = Root::empty();
         let root_node: Node = Node::Root(root);
         let mut current_root = root_node.clone();
-        let transaction_count: u32 = env::var("STRESS_TEST_TRANSACTION_COUNT")
+        let Message_count: u32 = env::var("STRESS_TEST_MESSAGE_COUNT")
             .unwrap_or_else(|_| "1000".to_string())
             .parse::<u32>()
-            .expect("Invalid argument STRESS_TEST_TRANSACTION_COUNT");
-        let progress_bar: ProgressBar = ProgressBar::new(transaction_count as u64);
+            .expect("Invalid argument STRESS_TEST_MESSAGE_COUNT");
+        let progress_bar: ProgressBar = ProgressBar::new(Message_count as u64);
         let mut leafs: Vec<Leaf> = Vec::new();
-        for _ in 0..transaction_count {
+        for _ in 0..Message_count {
             let leaf_key: Key = generate_random_key();
             let mut leaf: Leaf = Leaf::empty(leaf_key.clone());
             leaf.data = Some(generate_random_data());
@@ -191,7 +191,7 @@ pub mod tests {
         progress_bar.finish_with_message("Done checking merkle proofs!");
         println!(
             "[{}x Merkle Proof] Elapsed Time: {} s",
-            transaction_count.to_string().yellow(),
+            Message_count.to_string().yellow(),
             &start_time.elapsed().as_secs().to_string().blue()
         );
     }
