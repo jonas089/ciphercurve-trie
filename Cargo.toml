@@ -1,5 +1,5 @@
 [package]
-name = "patricia-trie"
+name = "ciphercurve-trie"
 version = "0.1.0"
 edition = "2021"
 
